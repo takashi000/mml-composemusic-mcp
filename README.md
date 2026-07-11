@@ -356,4 +356,4 @@ uv run python -m mml_composemusic_mcp.server --output-dir ./data
 
 ## ライセンス
 
-（プロジェクトのライセンスをここに記載してください）
+MIT
