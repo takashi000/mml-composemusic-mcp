@@ -143,6 +143,28 @@ def test_pyxel_repeat_count3():
     assert len(notes) == 6
 
 
+def test_pyxel_nested_repeat():
+    source = "0: T120 L4 O4\n[ [ C D ]2 E ]2"
+    tokens = tokenize(source, "pyxel")
+    ns, errors = parse_pyxel(source, tokens)
+    assert not any(e.severity == "error" for e in errors)
+    notes = [e for e in ns.channels["Pulse1"].events if isinstance(e, NoteEvent)]
+    # Inner: [C D]2 -> C D C D (4 notes)
+    # Outer: [ ... E ]2 -> (C D C D E) * 2 = 10 notes
+    assert len(notes) == 10
+
+
+def test_pyxel_nested_repeat_count3():
+    source = "0: T120 L4 O4\n[ [ C D ]2 E ]3"
+    tokens = tokenize(source, "pyxel")
+    ns, errors = parse_pyxel(source, tokens)
+    assert not any(e.severity == "error" for e in errors)
+    notes = [e for e in ns.channels["Pulse1"].events if isinstance(e, NoteEvent)]
+    # Inner: [C D]2 -> C D C D (4 notes)
+    # Outer: [ ... E ]3 -> (C D C D E) * 3 = 15 notes
+    assert len(notes) == 15
+
+
 # --- Tie ---
 
 
@@ -152,6 +174,21 @@ def test_ppmck_tie_note():
     ns, errors = parse_ppmck(source, tokens)
     # Tie should merge notes; check no error
     assert not any(e.severity == "error" for e in errors)
+    notes = [e for e in ns.channels["Pulse1"].events if isinstance(e, NoteEvent)]
+    # c4 & c4 should produce a single note with doubled duration (192*2=384)
+    assert len(notes) == 1
+    assert notes[0].duration == 384
+
+
+def test_pyxel_tie_note():
+    source = "0: T120 L4 O4\n  C4 & C4"
+    tokens = tokenize(source, "pyxel")
+    ns, errors = parse_pyxel(source, tokens)
+    assert not any(e.severity == "error" for e in errors)
+    notes = [e for e in ns.channels["Pulse1"].events if isinstance(e, NoteEvent)]
+    # C4 & C4 should produce a single note with doubled duration (192*2=384)
+    assert len(notes) == 1
+    assert notes[0].duration == 384
 
 
 def test_pyxel_tie_length():

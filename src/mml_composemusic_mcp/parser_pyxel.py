@@ -36,6 +36,15 @@ PYXEL_DUTY = {
 }
 
 
+class RepeatFrame:
+    """Stack frame for nested repeat expansion."""
+
+    def __init__(self, start_tick: int) -> None:
+        self.start_tick = start_tick
+        # Snapshot of event indices that existed before the repeat section
+        self.event_count: int = 0
+
+
 class PyxelParser:
     def __init__(self, source: str, tokens: list[Token]) -> None:
         self.source = source
@@ -51,7 +60,8 @@ class PyxelParser:
         self.detune_cents = 0
         self.tick_position = 0
         self.tracks_seen: set[str] = set()
-        self.repeat_stack: list[int] = []
+        self.repeat_stack: list[RepeatFrame] = []
+        self._tie_pending: bool = False
 
     def _context_line(self, token: Token) -> str:
         lines = self.source.splitlines()
@@ -71,7 +81,7 @@ class PyxelParser:
             self._parse_statement()
 
         if self.repeat_stack:
-            for _start_tick in self.repeat_stack:
+            for _frame in self.repeat_stack:
                 self.ctx.add_error(
                     code=ErrorCode.SYNTAX_UNTERMINATED_REPEAT,
                     line=1,
@@ -189,6 +199,13 @@ class PyxelParser:
             else:
                 break
 
+        if self._tie_pending:
+            # Tie: extend the last note/rest's duration instead of creating a new event
+            self._extend_last_note(ticks)
+            self.tick_position += ticks
+            self._tie_pending = False
+            return
+
         if self.current_channel == "Noise":
             midi = note_to_midi(note, self.octave, accidental)
         else:
@@ -221,6 +238,11 @@ class PyxelParser:
         self.ctx.advance()
         length, dots = self._read_length()
         ticks = length_value_to_ticks(length, dots)
+        if self._tie_pending:
+            self._extend_last_note(ticks)
+            self.tick_position += ticks
+            self._tie_pending = False
+            return
         event = RestEvent(tick_position=self.tick_position, duration=ticks)
         self._add_event(event)
         self.tick_position += ticks
@@ -404,7 +426,11 @@ class PyxelParser:
             self._extend_last_note(ticks)
             self.tick_position += ticks
             return
+        # For note/rest: back up tick_position so the next event starts at the
+        # end of the last note/rest. The next note's duration will be added
+        # to the previous note's duration via _tie_pending flag.
         self.tick_position = self._last_note_end()
+        self._tie_pending = True
 
     def _last_note_end(self) -> int:
         ch = self.note_sequence.channels[self.current_channel]  # type: ignore[index]
@@ -422,7 +448,10 @@ class PyxelParser:
 
     def _parse_repeat_start(self) -> None:
         self.ctx.advance()
-        self.repeat_stack.append(self.tick_position)
+        ch = self.note_sequence.channels[self.current_channel]  # type: ignore[index]
+        frame = RepeatFrame(start_tick=self.tick_position)
+        frame.event_count = len(ch.events)
+        self.repeat_stack.append(frame)
 
     def _parse_repeat_end(self) -> None:
         token = self.ctx.advance()
@@ -437,7 +466,10 @@ class PyxelParser:
                 context=self._context_line(token),
             )
             return
-        start_tick = self.repeat_stack.pop()
+        frame = self.repeat_stack.pop()
+        start_tick = frame.start_tick
+        ch = self.note_sequence.channels[self.current_channel]  # type: ignore[index]
+
         count_str = token.value
         if count_str == "":
             count = 0  # infinite
@@ -452,24 +484,23 @@ class PyxelParser:
             )
         else:
             count = int(count_str)
-        segment = [
-            e
-            for e in self.note_sequence.channels[self.current_channel].events  # type: ignore[index]
-            if start_tick <= e.tick_position < self.tick_position
-        ]
+
+        # Collect events that belong to this repeat section (created after the frame snapshot)
+        segment_events = ch.events[frame.event_count :]
+        segment_length = self.tick_position - start_tick
+
         repeat_count = 2 if count == 0 else count
         for i in range(1, repeat_count):
-            offset = i * (self.tick_position - start_tick)
-            for ev in segment:
+            offset = i * segment_length
+            for ev in segment_events:
                 new_event = self._clone_event(ev, ev.tick_position + offset)
                 self._add_event(new_event)
                 if isinstance(new_event, (NoteEvent, RestEvent)):
                     end = new_event.tick_position + new_event.duration
                     if end > self.tick_position:
                         self.tick_position = end
-        self.note_sequence.channels[self.current_channel].events.sort(  # type: ignore[index]
-            key=lambda e: e.tick_position
-        )
+
+        ch.events.sort(key=lambda e: e.tick_position)
         self._add_event(
             RepeatEvent(
                 start_tick=start_tick,

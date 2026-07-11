@@ -17,14 +17,16 @@ def _find_code(result, code, key="errors"):
 
 
 def _has_error(result):
-    return any(e["severity"] == "error" for e in result["validation"]["errors"])
+    if "validation" in result:
+        return any(e["severity"] == "error" for e in result["validation"]["errors"])
+    return any(e["severity"] == "error" for e in result["errors"])
 
 
 # --- SYNTAX_INVALID_TOKEN ---
 def test_syntax_invalid_token_mode(compose_mml):
     result = compose_mml(action="compose", mml="A c", mode="xyz")
     assert result["success"] is False
-    assert _find_code(result, ErrorCode.SYNTAX_INVALID_TOKEN.value)
+    assert _find_code(result, ErrorCode.VALIDATION_INVALID_MODE.value)
 
 
 # --- SYNTAX_INVALID_NUMBER ---
@@ -201,6 +203,27 @@ def test_syntax_unterminated_header(compose_mml):
     assert _find_code(result, ErrorCode.SYNTAX_UNTERMINATED_HEADER.value)
 
 
+# --- VALIDATION_MISSING_PARAMETER ---
+def test_validation_missing_parameter(compose_mml):
+    result = compose_mml(action="compose", mml="", mode="ppmck")
+    assert result["success"] is False
+    assert _find_code(result, ErrorCode.VALIDATION_MISSING_PARAMETER.value)
+
+
+# --- VALIDATION_INVALID_MODE ---
+def test_validation_invalid_mode(compose_mml):
+    result = compose_mml(action="compose", mml="A c", mode="xyz")
+    assert result["success"] is False
+    assert _find_code(result, ErrorCode.VALIDATION_INVALID_MODE.value)
+
+
+# --- VALIDATION_INVALID_ACTION ---
+def test_validation_invalid_action(compose_mml):
+    result = compose_mml(action="unknown")
+    assert result["success"] is False
+    assert _find_code(result, ErrorCode.VALIDATION_INVALID_ACTION.value)
+
+
 # --- SYSTEM_SYNTHESIS_FAILED ---
 def test_system_synthesis_failed(compose_mml):
     with patch(
@@ -234,6 +257,20 @@ def test_system_wav_write_failed(tmp_path):
 
 
 # --- SYSTEM_INTERNAL_ERROR ---
+def test_system_internal_error(compose_mml):
+    with patch(
+        "mml_composemusic_mcp.server._parse_mml",
+        side_effect=RuntimeError("unexpected internal error"),
+    ):
+        result = compose_mml(
+            action="compose",
+            mml="A t120 l4 o4\n  c",
+            mode="ppmck",
+        )
+    assert result["success"] is False
+    assert _find_code(result, ErrorCode.SYSTEM_INTERNAL_ERROR.value)
+
+
 def test_system_internal_error_not_exposed(compose_mml):
     result = compose_mml(action="compose", mml="A t120 l4 o4\n  c", mode="ppmck")
     assert isinstance(result, dict)

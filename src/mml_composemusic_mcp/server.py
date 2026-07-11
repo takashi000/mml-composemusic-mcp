@@ -35,7 +35,7 @@ def _parse_mml(mml: str, mode: str) -> tuple[dict, list[ErrorDetail]]:
     else:
         errors = [
             ErrorDetail(
-                code=ErrorCode.SYNTAX_INVALID_TOKEN,
+                code=ErrorCode.VALIDATION_INVALID_MODE,
                 line=0,
                 column=0,
                 message=f"未知のモード '{mode}' です。",
@@ -70,100 +70,126 @@ def compose_mml(
             return {
                 "success": False,
                 "valid": False,
-                "errors": [
-                    {
-                        "code": ErrorCode.SYNTAX_INVALID_TOKEN.value,
-                        "line": 0,
-                        "column": 0,
-                        "message": "mml と mode は compose/validate の必須パラメータです。",
-                        "severity": "error",
-                        "hint": "mml に MML 文字列、mode に 'ppmck' または 'pyxel' を指定してください。",
-                    }
-                ],
-                "warnings": [],
+                "note_sequence": None,
+                "validation": {
+                    "errors": [
+                        {
+                            "code": ErrorCode.VALIDATION_MISSING_PARAMETER.value,
+                            "line": 0,
+                            "column": 0,
+                            "message": "mml と mode は compose/validate の必須パラメータです。",
+                            "severity": "error",
+                            "hint": "mml に MML 文字列、mode に 'ppmck' または 'pyxel' を指定してください。",
+                        }
+                    ],
+                    "warnings": [],
+                },
             }
-        note_sequence_dict, errors = _parse_mml(mml, mode)
-        errors_list, warnings_list = _split_errors(errors)
-        if action == "validate":
+        try:
+            note_sequence_dict, errors = _parse_mml(mml, mode)
+            errors_list, warnings_list = _split_errors(errors)
+            if action == "validate":
+                return {
+                    "valid": not _is_error(errors),
+                    "errors": errors_list,
+                    "warnings": warnings_list,
+                    "note_sequence": note_sequence_dict,
+                    "channel_summary": build_channel_summary(note_sequence_dict)
+                    if note_sequence_dict
+                    else [],
+                }
+            # compose
+            if _is_error(errors):
+                return {
+                    "success": False,
+                    "wav_path": None,
+                    "duration_sec": 0,
+                    "note_sequence": note_sequence_dict,
+                    "validation": {"errors": errors_list, "warnings": warnings_list},
+                }
+
+            ns = _dict_to_note_sequence(note_sequence_dict)
+            try:
+                wave_data, duration, synth_errors = synthesize(
+                    ns, mode, sample_rate, normalize
+                )
+            except Exception as exc:
+                return {
+                    "success": False,
+                    "wav_path": None,
+                    "duration_sec": 0,
+                    "note_sequence": note_sequence_dict,
+                    "validation": {
+                        "errors": [
+                            {
+                                "code": ErrorCode.SYSTEM_SYNTHESIS_FAILED.value,
+                                "line": 0,
+                                "column": 0,
+                                "message": f"音声合成中にエラーが発生しました: {exc}",
+                                "severity": "error",
+                                "hint": "MMLの内容を確認の上、再度お試しください。問題が続く場合は、短いMMLから試してください。",
+                            }
+                        ],
+                        "warnings": warnings_list,
+                    },
+                }
+            errors.extend(synth_errors)
+            errors_list, warnings_list = _split_errors(errors)
+            if _is_error(errors):
+                return {
+                    "success": False,
+                    "wav_path": None,
+                    "duration_sec": 0,
+                    "note_sequence": note_sequence_dict,
+                    "validation": {"errors": errors_list, "warnings": warnings_list},
+                }
+            wav_path = OUTPUT_DIR / "output.wav"
+            wav_errors = write_wav(wav_path, wave_data, sample_rate)
+            errors.extend(wav_errors)
+            errors_list, warnings_list = _split_errors(errors)
             return {
-                "valid": not _is_error(errors),
-                "errors": errors_list,
-                "warnings": warnings_list,
-                "note_sequence": note_sequence_dict,
-                "channel_summary": build_channel_summary(note_sequence_dict)
-                if note_sequence_dict
-                else [],
-            }
-        # compose
-        if _is_error(errors):
-            return {
-                "success": False,
-                "wav_path": None,
-                "duration_sec": 0,
+                "success": not _is_error(errors),
+                "wav_path": str(wav_path) if not _is_error(errors) else None,
+                "duration_sec": duration,
                 "note_sequence": note_sequence_dict,
                 "validation": {"errors": errors_list, "warnings": warnings_list},
             }
-
-        ns = _dict_to_note_sequence(note_sequence_dict)
-        try:
-            wave_data, duration, synth_errors = synthesize(
-                ns, mode, sample_rate, normalize
-            )
         except Exception as exc:
             return {
                 "success": False,
                 "wav_path": None,
                 "duration_sec": 0,
-                "note_sequence": note_sequence_dict,
+                "note_sequence": None,
                 "validation": {
                     "errors": [
                         {
-                            "code": ErrorCode.SYSTEM_SYNTHESIS_FAILED.value,
+                            "code": ErrorCode.SYSTEM_INTERNAL_ERROR.value,
                             "line": 0,
                             "column": 0,
-                            "message": f"音声合成中にエラーが発生しました: {exc}",
+                            "message": f"内部エラーが発生しました: {exc}",
                             "severity": "error",
-                            "hint": "MMLの内容を確認の上、再度お試しください。問題が続く場合は、短いMMLから試してください。",
+                            "hint": "MMLの内容を確認の上、再度お試しください。",
                         }
                     ],
-                    "warnings": warnings_list,
+                    "warnings": [],
                 },
             }
-        errors.extend(synth_errors)
-        errors_list, warnings_list = _split_errors(errors)
-        if _is_error(errors):
-            return {
-                "success": False,
-                "wav_path": None,
-                "duration_sec": 0,
-                "note_sequence": note_sequence_dict,
-                "validation": {"errors": errors_list, "warnings": warnings_list},
-            }
-        wav_path = OUTPUT_DIR / "output.wav"
-        wav_errors = write_wav(wav_path, wave_data, sample_rate)
-        errors.extend(wav_errors)
-        errors_list, warnings_list = _split_errors(errors)
-        return {
-            "success": not _is_error(errors),
-            "wav_path": str(wav_path) if not _is_error(errors) else None,
-            "duration_sec": duration,
-            "note_sequence": note_sequence_dict,
-            "validation": {"errors": errors_list, "warnings": warnings_list},
-        }
 
     return {
         "success": False,
-        "errors": [
-            {
-                "code": ErrorCode.SYNTAX_INVALID_TOKEN.value,
-                "line": 0,
-                "column": 0,
-                "message": f"未知の action '{action}' です。",
-                "severity": "error",
-                "hint": "action は 'compose', 'validate', 'template' のいずれかを指定してください。",
-            }
-        ],
-        "warnings": [],
+        "validation": {
+            "errors": [
+                {
+                    "code": ErrorCode.VALIDATION_INVALID_ACTION.value,
+                    "line": 0,
+                    "column": 0,
+                    "message": f"未知の action '{action}' です。",
+                    "severity": "error",
+                    "hint": "action は 'compose', 'validate', 'template' のいずれかを指定してください。",
+                }
+            ],
+            "warnings": [],
+        },
     }
 
 

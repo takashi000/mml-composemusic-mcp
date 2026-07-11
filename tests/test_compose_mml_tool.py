@@ -85,13 +85,13 @@ def test_template_invalid_fallback(compose_mml):
 def test_compose_missing_mml(compose_mml):
     result = compose_mml(action="compose", mml="", mode="ppmck")
     assert result["success"] is False
-    assert any(e["severity"] == "error" for e in result["errors"])
+    assert any(e["severity"] == "error" for e in result["validation"]["errors"])
 
 
 def test_compose_missing_mode(compose_mml):
     result = compose_mml(action="compose", mml="A c", mode="")
     assert result["success"] is False
-    assert any(e["severity"] == "error" for e in result["errors"])
+    assert any(e["severity"] == "error" for e in result["validation"]["errors"])
 
 
 def test_validate_missing_mode(compose_mml):
@@ -103,7 +103,7 @@ def test_compose_unknown_mode(compose_mml):
     result = compose_mml(action="compose", mml="A c", mode="xyz")
     assert result["success"] is False
     assert any(
-        e["code"] == "SYNTAX_INVALID_TOKEN" for e in result["validation"]["errors"]
+        e["code"] == "VALIDATION_INVALID_MODE" for e in result["validation"]["errors"]
     )
 
 
@@ -127,7 +127,7 @@ def test_compose_with_warning(compose_mml, tmp_output_dir):
 def test_action_invalid(compose_mml):
     result = compose_mml(action="unknown")
     assert result["success"] is False
-    assert any("action" in e["message"] for e in result["errors"])
+    assert any("action" in e["message"] for e in result["validation"]["errors"])
 
 
 def test_compose_sample_rates(compose_mml, tmp_output_dir):

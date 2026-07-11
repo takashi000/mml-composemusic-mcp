@@ -41,6 +41,7 @@ class PpmckParser:
         self.headers: list[tuple[str, str]] = []
         self.loop_start: int | None = None
         self.tracks_seen: set[str] = set()
+        self._tie_pending: bool = False
 
     def _context_line(self, token: Token) -> str:
         lines = self.source.splitlines()
@@ -202,6 +203,13 @@ class PpmckParser:
             else:
                 break
 
+        if self._tie_pending:
+            # Tie: extend the last note/rest's duration instead of creating a new event
+            self._extend_last_note(ticks)
+            self.tick_position += ticks
+            self._tie_pending = False
+            return
+
         if self.current_channel == "Noise":
             self.ctx.add_error(
                 code=ErrorCode.SYNTAX_CHANNEL_MISMATCH,
@@ -242,6 +250,11 @@ class PpmckParser:
         self.ctx.advance()
         length, dots = self._read_length()
         ticks = length_value_to_ticks(length, dots)
+        if self._tie_pending:
+            self._extend_last_note(ticks)
+            self.tick_position += ticks
+            self._tie_pending = False
+            return
         event = RestEvent(tick_position=self.tick_position, duration=ticks)
         self._add_event(event)
         self.tick_position += ticks
@@ -372,11 +385,11 @@ class PpmckParser:
             self._extend_last_note(ticks)
             self.tick_position += ticks
             return
-        # For note/rest, parser will create next event; we just note that previous
-        # event should be merged. Simple approach: reduce tick_position and mark.
-        # Here we just allow the next note to overwrite position and merge later.
-        # Implementation: back up tick position so next note duration adds to previous.
+        # For note/rest: back up tick_position so the next event starts at the
+        # end of the last note/rest. The next note's duration will be added
+        # to the previous note's duration via _tie_pending flag.
         self.tick_position = self._last_note_end()
+        self._tie_pending = True
 
     def _last_note_end(self) -> int:
         ch = self.note_sequence.channels[self.current_channel]  # type: ignore[index]
