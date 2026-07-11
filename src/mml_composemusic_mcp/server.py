@@ -88,6 +88,7 @@ def compose_mml(
             return {
                 "valid": not _is_error(errors),
                 "errors": errors_list,
+                "warnings": warnings_list,
                 "note_sequence": note_sequence_dict,
                 "channel_summary": build_channel_summary(note_sequence_dict)
                 if note_sequence_dict

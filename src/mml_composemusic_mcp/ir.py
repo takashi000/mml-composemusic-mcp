@@ -61,6 +61,7 @@ class NoteEvent:
     velocity: int = 15
     duty: int = 2
     gate_time: float = 1.0
+    detune_cents: float = 0.0
 
 
 @dataclass

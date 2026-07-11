@@ -382,7 +382,7 @@ class PpmckParser:
         ch = self.note_sequence.channels[self.current_channel]  # type: ignore[index]
         for ev in reversed(ch.events):
             if isinstance(ev, (NoteEvent, RestEvent)):
-                return ev.tick_position
+                return ev.tick_position + ev.duration
         return self.tick_position
 
     def _extend_last_note(self, ticks: int) -> None:

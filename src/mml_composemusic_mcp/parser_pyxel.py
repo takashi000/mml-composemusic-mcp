@@ -139,7 +139,6 @@ class PyxelParser:
             TokenType.LENGTH: self._parse_length,
             TokenType.VOLUME: self._parse_volume,
             TokenType.GATE_TIME: self._parse_gate_time,
-            TokenType.DUTY: self._parse_duty,
             TokenType.AT: self._parse_at,
             TokenType.TEMPO: self._parse_tempo,
             TokenType.TRANSPOSE: self._parse_transpose,
@@ -213,6 +212,7 @@ class PyxelParser:
             velocity=self._normalize_velocity(self.velocity),
             duty=self.duty,
             gate_time=self.gate_time,
+            detune_cents=float(self.detune_cents),
         )
         self._add_event(event)
         self.tick_position += ticks
@@ -228,12 +228,12 @@ class PyxelParser:
     def _parse_octave(self) -> None:
         token = self.ctx.advance()
         value = int(token.value)
-        if not -1 <= value <= 9:
+        if not 0 <= value <= 7:
             self.ctx.add_error(
                 code=ErrorCode.SYNTAX_VALUE_OUT_OF_RANGE,
                 line=token.line,
                 column=token.column,
-                message=f"'O' の値 {value} は範囲外です。有効範囲: -1〜9。",
+                message=f"'O' の値 {value} は範囲外です。有効範囲: 0〜7。",
                 severity="error",
                 hint="例: O4 のように指定してください。",
                 context=self._context_line(token),
@@ -243,12 +243,12 @@ class PyxelParser:
 
     def _parse_octave_up(self) -> None:
         self.ctx.advance()
-        if self.octave < 9:
+        if self.octave < 7:
             self.octave += 1
 
     def _parse_octave_down(self) -> None:
         self.ctx.advance()
-        if self.octave > -1:
+        if self.octave > 0:
             self.octave -= 1
 
     def _parse_length(self) -> None:
@@ -307,38 +307,6 @@ class PyxelParser:
             )
             return
         self.gate_time = value / 100.0
-
-    def _parse_duty(self, cmd_raw: str = "Q") -> None:
-        # Q command maps to duty per Design_mml legacy section
-        token = self.ctx.peek()
-        value = int(token.value)
-        if not 0 <= value <= 3:
-            self.ctx.add_error(
-                code=ErrorCode.SYNTAX_VALUE_OUT_OF_RANGE,
-                line=token.line,
-                column=token.column,
-                message=f"'{cmd_raw}' の値 {value} は範囲外です。有効範囲: 0〜3。",
-                severity="error",
-                hint=f"例: {cmd_raw}2 のように指定してください。",
-                context=self._context_line(token),
-            )
-            self.ctx.advance()
-            return
-        if self.current_channel not in PULSE_CHANNELS:
-            self.ctx.add_error(
-                code=ErrorCode.SYNTAX_CHANNEL_MISMATCH,
-                line=token.line,
-                column=token.column,
-                message=f"チャンネル '{self.current_channel}' で '{cmd_raw}' は使用できません。",
-                severity="warning",
-                hint=f"{self.current_channel}チャンネルではデューティ比を持ちません。{cmd_raw} コマンドを削除してください。",
-                context=self._context_line(token),
-            )
-            self.ctx.advance()
-            return
-        self.duty = value
-        self._add_event(DutyEvent(tick_position=self.tick_position, value=value))
-        self.ctx.advance()
 
     def _parse_at(self) -> None:
         token = self.ctx.advance()
@@ -442,7 +410,7 @@ class PyxelParser:
         ch = self.note_sequence.channels[self.current_channel]  # type: ignore[index]
         for ev in reversed(ch.events):
             if isinstance(ev, (NoteEvent, RestEvent)):
-                return ev.tick_position
+                return ev.tick_position + ev.duration
         return self.tick_position
 
     def _extend_last_note(self, ticks: int) -> None:
