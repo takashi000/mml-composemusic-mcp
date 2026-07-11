@@ -131,3 +131,6 @@ $RECYCLE.BIN/
 
 # Logs
 *.log
+
+# Generated assets
+data/

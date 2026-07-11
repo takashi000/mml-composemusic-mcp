@@ -1,10 +1,13 @@
 [project]
 name = "mml-composemusic-mcp"
 version = "0.1.0"
-description = "Add your description here"
+description = "MCP server for LLM-driven Famicom-style MML composition"
 readme = "README.md"
 requires-python = ">=3.14"
-dependencies = []
+dependencies = [
+    "fastmcp>=2.1.0",
+    "numpy>=2.0.0",
+]
 
 [dependency-groups]
 dev = [
@@ -24,8 +27,10 @@ target-version = "py314"
 line-length = 88
 src = ["src", "tests"]
 
+
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "N", "UP", "B", "C4"]
+ignore = ["E501"]
 
 [tool.ruff.format]
 quote-style = "double"
@@ -33,3 +38,6 @@ quote-style = "double"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+
+[project.scripts]
+mml-composemusic-mcp = "mml_composemusic_mcp.server:main"

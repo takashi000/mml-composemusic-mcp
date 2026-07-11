@@ -1,38 +1,53 @@
 # mml-composemusic-mcp
 
-MML (Music Macro Language) を使った作曲支援 MCP サーバー向け Python パッケージ。
+ファミコン音源（2A03 APU）風のMMLをLLMに作曲させるためのMCPサーバ。
 
-## 開発環境
+## 機能
 
-- Python 3.14+
-- 依存管理: [uv](https://docs.astral.sh/uv/)
+- `compose_mml` ツールを提供
+- ppmck 形式と pyxel 形式のMMLを解析・合成
+- MIDIノート番号に変換後、NES APU風の矩形波/三角波/ノイズでWAV出力
+- バリデーション、テンプレート生成に対応
 
-## セットアップ
+## ツール引数
+
+| 引数 | 説明 |
+|------|------|
+| `action` | `compose`, `validate`, `template` のいずれか |
+| `mml` | MML文字列（compose/validate時必須） |
+| `mode` | `ppmck` または `pyxel`（compose/validate時必須） |
+| `template` | `basic`, `melody`, `chord`, `drum`, `empty`（action=template時） |
+| `sample_rate` | WAV出力サンプリングレート（デフォルト44100） |
+| `normalize` | 出力振幅の正規化（デフォルトtrue） |
+
+## 実行
 
 ```bash
-uv sync
+uv run mml-composemusic-mcp --output-dir ./data
 ```
 
-## 主要コマンド
+または
 
 ```bash
-# テスト実行
-uv run pytest
+uv run python -m mml_composemusic_mcp.server --output-dir ./data
+```
 
-# リンター・フォーマッタ実行
+## テスト
+
+```bash
+uv run pytest
 uv run ruff check .
 uv run ruff format .
-
-# 依存追加
-uv add <package>
-
-# 開発依存追加
-uv add --dev <package>
 ```
 
 ## ディレクトリ構成
 
-```
-src/     # ソースコード
-tests/   # テストコード
-doc/     # ドキュメント
+- `src/mml_composemusic_mcp/`
+  - `server.py` - MCPサーバ
+  - `lexer.py` - MML字句解析
+  - `parser_ppmck.py`, `parser_pyxel.py` - 構文解析
+  - `ir.py` - 中間表現・エラー型
+  - `synthesizer.py` - APU風合成・WAV出力
+  - `templates.py` - テンプレート
+- `tests/` - テスト
+- `doc/` - 設計書
