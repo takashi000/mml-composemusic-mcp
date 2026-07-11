@@ -274,7 +274,14 @@ def main() -> None:
     args = parser.parse_args()
     global OUTPUT_DIR
     OUTPUT_DIR = Path(args.output_dir)
-    mcp.run(transport=args.transport, host=args.host, port=args.port)
+    if args.transport == "stdio":
+        mcp.run(transport="stdio")
+    else:
+        mcp.run(
+            transport=args.transport,
+            host=args.host,
+            port=args.port,
+        )
 
 
 if __name__ == "__main__":

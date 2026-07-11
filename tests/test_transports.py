@@ -8,13 +8,15 @@ from mml_composemusic_mcp.server import main
 
 
 def test_transport_stdio_default():
-    """Default transport should be stdio."""
+    """Default transport should be stdio without host/port."""
     with patch("sys.argv", ["server", "--output-dir", "./data"]):
         with patch("mml_composemusic_mcp.server.mcp.run") as mock_run:
             main()
             mock_run.assert_called_once()
             call_kwargs = mock_run.call_args
             assert call_kwargs[1]["transport"] == "stdio"
+            assert "host" not in call_kwargs[1]
+            assert "port" not in call_kwargs[1]
 
 
 def test_transport_http():
@@ -32,21 +34,25 @@ def test_transport_http():
 
 
 def test_transport_sse():
-    """SSE transport should be accepted."""
+    """SSE transport should pass host and port."""
     with patch("sys.argv", ["server", "--transport", "sse", "--port", "8080"]):
         with patch("mml_composemusic_mcp.server.mcp.run") as mock_run:
             main()
             call_kwargs = mock_run.call_args
             assert call_kwargs[1]["transport"] == "sse"
+            assert "host" in call_kwargs[1]
+            assert call_kwargs[1]["port"] == 8080
 
 
 def test_transport_streamable_http():
-    """Streamable HTTP transport should be accepted."""
+    """Streamable HTTP transport should pass host and port."""
     with patch("sys.argv", ["server", "--transport", "streamable-http"]):
         with patch("mml_composemusic_mcp.server.mcp.run") as mock_run:
             main()
             call_kwargs = mock_run.call_args
             assert call_kwargs[1]["transport"] == "streamable-http"
+            assert "host" in call_kwargs[1]
+            assert "port" in call_kwargs[1]
 
 
 def test_transport_invalid_rejected():

@@ -82,6 +82,19 @@ def test_syntax_unexpected_token(compose_mml):
     assert result["valid"] is True
 
 
+# --- SYNTAX_OUTSIDE_TRACK ---
+def test_syntax_outside_track_ppmck(compose_mml):
+    result = compose_mml(action="validate", mml="t120\nA l4\n  c", mode="ppmck")
+    assert result["valid"] is True
+    assert _find_code(result, ErrorCode.SYNTAX_OUTSIDE_TRACK.value, "warnings")
+
+
+def test_syntax_outside_track_pyxel(compose_mml):
+    result = compose_mml(action="validate", mml="T120\n0: L4\n  C", mode="pyxel")
+    assert result["valid"] is True
+    assert _find_code(result, ErrorCode.SYNTAX_OUTSIDE_TRACK.value, "warnings")
+
+
 # --- SYNTAX_UNTERMINATED_REPEAT ---
 def test_syntax_unterminated_repeat_pyxel(compose_mml):
     result = compose_mml(action="validate", mml="0: T120 L4\n[ C D", mode="pyxel")

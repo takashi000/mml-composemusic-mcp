@@ -62,6 +62,7 @@ class PpmckParser:
                 self._parse_track_header()
                 continue
             if self.current_channel is None:
+                self._warn_outside_track(token)
                 self.ctx.advance()
                 continue
             self._parse_statement()
@@ -108,6 +109,19 @@ class PpmckParser:
                     context=self._context_line(token),
                 )
         self.headers.append((key, value))
+
+    def _warn_outside_track(self, token: Token) -> None:
+        if token.type in (TokenType.EOF, TokenType.COMMENT):
+            return
+        self.ctx.add_error(
+            code=ErrorCode.SYNTAX_OUTSIDE_TRACK,
+            line=token.line,
+            column=token.column,
+            message=f"'{token.raw}' はトラック外に書かれています。",
+            severity="warning",
+            hint="コマンドはトラックヘッダー（A, B, T, N）の後に記述してください。",
+            context=self._context_line(token),
+        )
 
     def _parse_track_header(self) -> None:
         token = self.ctx.advance()
