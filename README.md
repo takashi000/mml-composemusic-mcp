@@ -185,7 +185,7 @@ uv run mml-composemusic-mcp --transport sse --port 8080 --output-dir ./data
 ```json
 {
   "success": true,
-  "wav_path": "./data/output.wav",
+  "wav_path": "./data/output_20260711_120000_123.wav",
   "duration_sec": 2.0,
   "note_sequence": { ... },
   "validation": {
@@ -197,6 +197,7 @@ uv run mml-composemusic-mcp --transport sse --port 8080 --output-dir ./data
 
 - `success` が `false` の場合、`wav_path` は `null` になります。
 - エラーがある場合は `validation.errors` に詳細なエラー情報が入ります。
+- **WAVファイル名は生成時刻ベースの `output_YYYYMMDD_HHMMSS_mmm.wav` 形式で出力されます。** 毎回異なるファイル名になるため、複数回の `compose` 実行でファイルが上書きされることはありません。
 
 ### action=`validate` — 構文チェック
 

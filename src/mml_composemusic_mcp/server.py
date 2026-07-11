@@ -1,6 +1,7 @@
 # MCP server exposing compose_mml tool.
 
 import argparse
+from datetime import datetime
 from pathlib import Path
 
 from fastmcp import FastMCP
@@ -18,6 +19,19 @@ OUTPUT_DIR = Path("./data")
 
 def _is_error(errors: list[ErrorDetail]) -> bool:
     return any(e.severity == "error" for e in errors)
+
+
+def _generate_wav_filename() -> str:
+    """Generate a unique WAV filename based on the current timestamp.
+
+    Format: output_YYYYMMDD_HHMMSS_mmm.wav
+    Milliseconds are included to reduce the chance of collisions when
+    multiple compose requests are issued in rapid succession.
+    """
+    now = datetime.now()
+    # %f gives microseconds (6 digits); keep the first 3 for milliseconds.
+    timestamp = now.strftime("%Y%m%d_%H%M%S_") + now.strftime("%f")[:3]
+    return f"output_{timestamp}.wav"
 
 
 def _split_errors(errors: list[ErrorDetail]) -> tuple[list[dict], list[dict]]:
@@ -143,7 +157,7 @@ def compose_mml(
                     "note_sequence": note_sequence_dict,
                     "validation": {"errors": errors_list, "warnings": warnings_list},
                 }
-            wav_path = OUTPUT_DIR / "output.wav"
+            wav_path = OUTPUT_DIR / _generate_wav_filename()
             wav_errors = write_wav(wav_path, wave_data, sample_rate)
             errors.extend(wav_errors)
             errors_list, warnings_list = _split_errors(errors)

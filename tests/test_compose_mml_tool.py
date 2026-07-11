@@ -151,3 +151,36 @@ def test_compose_normalize(compose_mml, tmp_output_dir):
     assert on["success"] and off["success"]
     assert Path(on["wav_path"]).exists()
     assert Path(off["wav_path"]).exists()
+
+
+def test_compose_unique_filename(compose_mml, tmp_output_dir):
+    """Each compose call should produce a distinct WAV filename."""
+    mml = """A t120 l4 o4 v15 q2
+  c4
+"""
+    result1 = compose_mml(action="compose", mml=mml, mode="ppmck")
+    result2 = compose_mml(action="compose", mml=mml, mode="ppmck")
+    assert result1["success"] is True
+    assert result2["success"] is True
+
+    path1 = result1["wav_path"]
+    path2 = result2["wav_path"]
+    assert path1 is not None
+    assert path2 is not None
+    assert path1 != path2, "Two compose calls produced the same wav_path"
+
+    p1 = Path(path1)
+    p2 = Path(path2)
+    assert p1.exists()
+    assert p2.exists()
+    assert p1.name.startswith("output_")
+    assert p1.name.endswith(".wav")
+    assert p2.name.startswith("output_")
+    assert p2.name.endswith(".wav")
+
+    # Ensure the filename follows the expected timestamp pattern.
+    import re
+
+    pattern = re.compile(r"^output_\d{8}_\d{6}_\d{3}\.wav$")
+    assert pattern.match(p1.name)
+    assert pattern.match(p2.name)
