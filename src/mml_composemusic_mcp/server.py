@@ -56,7 +56,7 @@ def compose_mml(
     sample_rate: int = 44100,
     normalize: bool = True,
 ) -> dict:
-    """Compose, validate, or generate templates for Famicom-style MML."""
+    """Compose, validate, or generate templates for retro chiptune-style MML."""
     if action == "template":
         if mode not in ("ppmck", "pyxel"):
             mode = "ppmck"

@@ -1,4 +1,4 @@
-"""Tests for the NES APU synthesizer engine."""
+"""Tests for the retro APU synthesizer engine."""
 
 import wave
 

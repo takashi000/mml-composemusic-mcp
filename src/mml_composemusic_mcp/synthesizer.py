@@ -1,4 +1,4 @@
-"""NES APU-style synthesizer: NoteSequence -> WAV."""
+"""Retro APU-style synthesizer: NoteSequence -> WAV."""
 
 import wave
 from math import floor
@@ -26,7 +26,7 @@ def midi_to_freq(note_number: int) -> float:
 
 
 def noise_period_to_rate(period: int, mode: int, sample_rate: int) -> float:
-    # NES noise: rate = CPU_CLOCK / (NTSC divider for period)
+    # Retro noise: rate = CPU_CLOCK / (NTSC divider for period)
     # Approximate using pyxel mapping described in design
     dividers = [
         4,
