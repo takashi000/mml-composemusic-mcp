@@ -20,6 +20,7 @@ Pulse 2ch、Triangle 1ch、Noise 1chの構成を持つ簡易2A03 APU風シンセ
 ## サンプルデータ
 
 実際にLLMを使用してこのMCPツールで作曲させてみたサンプルデータです。
+
 ppmck版
 - [音声](samples/ppmck/output.wav)
 - [mml](samples/ppmck/output.mml)
