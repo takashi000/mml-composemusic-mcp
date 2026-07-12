@@ -8,15 +8,25 @@ import pytest
 from mml_composemusic_mcp.ir import (
     NoteEvent,
     NoteSequence,
+    TempoEvent,
+    VolumeEnvelopeEvent,
     VolumeEvent,
 )
 from mml_composemusic_mcp.synthesizer import (
+    NOISE_PERIODS,
+    PULSE_SEQUENCES,
+    TRIANGLE_SEQUENCE,
     ChannelSynthesizer,
+    TempoMap,
+    apu_mix,
     build_channel_summary,
+    build_tempo_map,
+    frequency_to_timer,
     midi_to_freq,
     noise_period_to_rate,
     synthesize,
     tick_to_second,
+    timer_to_frequency,
     write_wav,
 )
 
@@ -38,6 +48,61 @@ def test_midi_to_freq_high():
 def test_noise_period_to_rate():
     rate = noise_period_to_rate(8, 0, 44100)
     assert rate > 0
+
+
+def test_ntsc_noise_period_table():
+    assert NOISE_PERIODS == (
+        4,
+        8,
+        16,
+        32,
+        64,
+        96,
+        128,
+        160,
+        202,
+        254,
+        380,
+        508,
+        762,
+        1016,
+        2034,
+        4068,
+    )
+
+
+def test_apu_step_sequences():
+    assert [sum(sequence) for sequence in PULSE_SEQUENCES] == [1, 2, 4, 6]
+    assert TRIANGLE_SEQUENCE[:16] == tuple(range(15, -1, -1))
+    assert TRIANGLE_SEQUENCE[16:] == tuple(range(16))
+
+
+def test_timer_quantization_matches_2a03_formula():
+    timer = frequency_to_timer(440.0, "pulse")
+    assert timer == round(1_789_772.5 / (16 * 440.0) - 1)
+    assert timer_to_frequency(timer, "pulse") == pytest.approx(440.0, rel=0.003)
+
+
+def test_nonlinear_apu_mixer():
+    one = np.array([15.0])
+    zero = np.array([0.0])
+    single = apu_mix(one, zero, zero, zero)[0]
+    double = apu_mix(one, one, zero, zero)[0]
+    assert 0 < single < double < single * 2
+
+
+def test_tempo_map_integrates_mid_song_change():
+    tempo = TempoMap([(0, 120), (192, 60)])
+    assert tempo.tick_to_second(192) == pytest.approx(0.5)
+    assert tempo.tick_to_second(384) == pytest.approx(1.5)
+
+
+def test_note_sequence_tempo_map_keeps_default_before_late_change():
+    ns = NoteSequence(bpm=120)
+    ns.channels["Pulse1"].events.append(TempoEvent(tick_position=192, bpm=60))
+    tempo = build_tempo_map(ns)
+    assert tempo.tick_to_second(192) == pytest.approx(0.5)
+    assert tempo.tick_to_second(384) == pytest.approx(1.5)
 
 
 def test_tick_to_second():
@@ -65,9 +130,9 @@ def test_triangle_render_ppmck():
     wave_out = synth.render(events, 192, 120, "ppmck")
     assert len(wave_out) > 0
     assert np.any(wave_out != 0)
-    # In ppmck mode, triangle amplitude should be full (velocity ignored)
+    # Raw channel output is the 2A03's four-bit DAC value.
     peak = np.max(np.abs(wave_out))
-    assert peak == pytest.approx(1.0, rel=1e-2)
+    assert peak == 15
 
 
 def test_triangle_render_pyxel():
@@ -79,9 +144,9 @@ def test_triangle_render_pyxel():
     wave_out = synth.render(events, 192, 120, "pyxel")
     assert len(wave_out) > 0
     assert np.any(wave_out != 0)
-    # In pyxel mode, velocity/15 scales amplitude
+    # Triangle volume is not controlled by the 2A03 DAC.
     peak = np.max(np.abs(wave_out))
-    assert peak == pytest.approx(7 / 15, rel=1e-1)
+    assert peak == 15
 
 
 def test_noise_render_ppmck():
@@ -98,6 +163,17 @@ def test_noise_render_pyxel():
     wave_out = synth.render(events, 192, 120, "pyxel")
     assert len(wave_out) > 0
     assert np.any(wave_out != 0)
+
+
+def test_noise_short_mode_uses_different_lfsr_tap():
+    events = [NoteEvent(tick_position=0, duration=192, note_number=48, velocity=15)]
+    long_wave = ChannelSynthesizer("noise", 8000, noise_mode=0).render(
+        events, 192, 120, "pyxel"
+    )
+    short_wave = ChannelSynthesizer("noise", 8000, noise_mode=1).render(
+        events, 192, 120, "pyxel"
+    )
+    assert not np.array_equal(long_wave, short_wave)
 
 
 # --- Full synthesize ---
@@ -132,6 +208,20 @@ def test_synthesize_normalize():
     off_data, _, _ = synthesize(ns, "ppmck", 44100, False)
     # Normalized should have peak ~1.0
     assert np.max(np.abs(on_data)) == pytest.approx(1.0, rel=1e-2)
+
+
+def test_volume_envelope_changes_apu_dac_at_48_ticks():
+    definitions = {"volume_envelopes": {1: {"points": [15, 0], "loop_points": []}}}
+    events = [
+        VolumeEnvelopeEvent(tick_position=0, slot=1),
+        NoteEvent(tick_position=0, duration=96, note_number=69, velocity=15),
+    ]
+    wave_out = ChannelSynthesizer("pulse", 8000).render(
+        events, 96, 120, "ppmck", definitions
+    )
+    midpoint = len(wave_out) // 2
+    assert np.max(wave_out[:midpoint]) == 15
+    assert np.max(wave_out[midpoint:]) == 0
 
 
 # --- WAV output ---

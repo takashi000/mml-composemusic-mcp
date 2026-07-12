@@ -253,6 +253,8 @@ def _dict_to_note_sequence(data: dict) -> NoteSequence:
         version=data["version"],
         bpm=data["bpm"],
         ticks_per_quarter=data["ticks_per_quarter"],
+        mode=data.get("mode", "ppmck"),
+        definitions=data.get("definitions", {}),
         channels={},
     )
     for name, ch_data in data["channels"].items():

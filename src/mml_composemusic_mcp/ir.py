@@ -44,6 +44,7 @@ class ErrorCode(Enum):
     SEMANTIC_EMPTY_TRACK = "SEMANTIC_EMPTY_TRACK"
     SEMANTIC_OUTSIDE_TRACK = "SEMANTIC_OUTSIDE_TRACK"
     SEMANTIC_UNDEFINED_REFERENCE = "SEMANTIC_UNDEFINED_REFERENCE"
+    SEMANTIC_DUPLICATE_DEFINITION = "SEMANTIC_DUPLICATE_DEFINITION"
     SEMANTIC_UNSUPPORTED_FEATURE = "SEMANTIC_UNSUPPORTED_FEATURE"
 
     # --- Runtime errors (Synthesizer phase) ---
@@ -279,9 +280,22 @@ class ChannelSequence:
 
 @dataclass
 class NoteSequence:
-    version: str = "1.0"
+    version: str = "2.0"
     bpm: int = 120
     ticks_per_quarter: int = 192
+    mode: str = "ppmck"
+    definitions: dict[str, dict[int, Any]] = field(
+        default_factory=lambda: {
+            "volume_envelopes": {},
+            "duty_envelopes": {},
+            "pitch_envelopes": {},
+            "note_envelopes": {},
+            "lfos": {},
+            "envelopes": {},
+            "vibratos": {},
+            "glides": {},
+        }
+    )
     channels: dict[str, ChannelSequence] = field(
         default_factory=lambda: {
             "Pulse1": ChannelSequence("pulse"),
@@ -296,6 +310,8 @@ class NoteSequence:
             "version": self.version,
             "bpm": self.bpm,
             "ticks_per_quarter": self.ticks_per_quarter,
+            "mode": self.mode,
+            "definitions": self.definitions,
             "channels": {k: v.to_dict() for k, v in self.channels.items()},
         }
 

@@ -17,6 +17,7 @@ class Program(ASTNode):
     """Root program node."""
 
     tracks: list[Track] = field(default_factory=list)
+    global_statements: list[Statement] = field(default_factory=list)
 
 
 @dataclass

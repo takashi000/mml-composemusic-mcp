@@ -97,6 +97,9 @@ class SemanticAnalyzer:
         self.tick_position = 0
 
     def analyze(self) -> tuple[NoteSequence, list[ErrorDetail]]:
+        self.current_channel = None
+        for stmt in self.program.global_statements:
+            self._analyze_statement(stmt)
         for track in self.program.tracks:
             self._analyze_track(track)
         self._finalize()

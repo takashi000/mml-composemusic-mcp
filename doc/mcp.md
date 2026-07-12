@@ -52,6 +52,10 @@ MML文字列を解析し、以下のいずれかの処理を実行します。
 | `wav_path` | string \| null | 生成されたWAVファイルのパス（失敗時はnull） |
 | `duration_sec` | number | 生成された音声の長さ（秒） |
 | `note_sequence` | object \| null | 中間表現（IR）のNoteSequence |
+
+`note_sequence`はIR v2で返される。曲全体で共有するエンベロープ/LFO定義は
+`definitions`、選択・解除と演奏イベントは各`channels.*.events`に格納される。
+`ppmck`は構文モード名であり、拡張コマンドのPPMCK/mckc互換を保証しない。
 | `validation.errors` | array | エラーのリスト |
 | `validation.warnings` | array | 警告のリスト |
 

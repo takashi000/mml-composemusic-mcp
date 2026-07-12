@@ -77,46 +77,53 @@ def test_ppmck_tie_cmd():
     assert notes[0].duration == 384
 
 
-def test_ppmck_detune_warning():
+def test_ppmck_detune_supported():
     source = "A t120 l4 o4 D10\n  c"
     ns, errors = _analyze_ppmck(source)
-    assert any(e.code == ErrorCode.SEMANTIC_UNSUPPORTED_FEATURE for e in errors)
+    assert not errors
+    assert (
+        next(
+            e for e in ns.channels["Pulse1"].events if isinstance(e, NoteEvent)
+        ).detune_cents
+        == 10
+    )
 
 
-def test_ppmck_sweep_warning():
+def test_ppmck_sweep_supported():
     source = "A t120 l4 o4 s1,2\n  c"
     ns, errors = _analyze_ppmck(source)
-    assert any(e.code == ErrorCode.SEMANTIC_UNSUPPORTED_FEATURE for e in errors)
+    assert not errors
 
 
-def test_ppmck_rel_vol_warning():
+def test_ppmck_rel_vol_supported():
     source = "A t120 l4 o4 v+5\n  c"
     ns, errors = _analyze_ppmck(source)
-    assert any(e.code == ErrorCode.SEMANTIC_UNSUPPORTED_FEATURE for e in errors)
+    assert not errors
 
 
-def test_ppmck_vol_env_use_warning():
-    source = "A t120 l4 o4 @v0\n  c"
+def test_ppmck_vol_env_use_supported():
+    source = "A t120 l4 o4 @v0={15|10} @v0\n  c"
     ns, errors = _analyze_ppmck(source)
-    assert any(e.code == ErrorCode.SEMANTIC_UNSUPPORTED_FEATURE for e in errors)
+    assert not errors
 
 
-def test_ppmck_vol_env_def_warning():
+def test_ppmck_vol_env_def_supported():
     source = "A t120 l4 o4\n@v0 = { 15, 10, | 5 }\n  c"
     ns, errors = _analyze_ppmck(source)
-    assert any(e.code == ErrorCode.SEMANTIC_UNSUPPORTED_FEATURE for e in errors)
+    assert not errors
+    assert ns.definitions["volume_envelopes"][0]["points"] == [15, 10]
 
 
-def test_ppmck_lfo_def_warning():
+def test_ppmck_lfo_def_supported():
     source = "A t120 l4 o4\n@MP0 = { 0, 10, 5, 0 }\n  c"
     ns, errors = _analyze_ppmck(source)
-    assert any(e.code == ErrorCode.SEMANTIC_UNSUPPORTED_FEATURE for e in errors)
+    assert not errors
 
 
-def test_ppmck_duty_env_use_warning():
-    source = "A t120 l4 o4 @@0\n  c"
+def test_ppmck_duty_env_use_supported():
+    source = "A t120 l4 o4 @0={0|1} @@0\n  c"
     ns, errors = _analyze_ppmck(source)
-    assert any(e.code == ErrorCode.SEMANTIC_UNSUPPORTED_FEATURE for e in errors)
+    assert not errors
 
 
 def test_ppmck_duty_triangle_error():

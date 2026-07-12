@@ -329,7 +329,7 @@ class Lexer:
                 num0 = self._read_number()
                 if self._peek() == ",":
                     self._advance()
-                num1 = self._read_number()
+                num1 = self._read_signed_number()
                 raw = f"s{num0},{num1}"
                 self._emit(TokenType.SWEEP, f"{num0},{num1}", raw)
                 return

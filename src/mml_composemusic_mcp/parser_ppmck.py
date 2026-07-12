@@ -97,6 +97,36 @@ class PpmckParser:
             if token.type == TokenType.INVALID:
                 self._handle_invalid(token)
                 continue
+            if token.type in {
+                TokenType.VOL_ENV,
+                TokenType.DUTY,
+                TokenType.LFO_DEF,
+                TokenType.PITCH_ENV_DEF,
+                TokenType.NOTE_ENV_DEF,
+            }:
+                statement = self._parse_statement()
+                if isinstance(
+                    statement,
+                    (
+                        VolumeEnvelopeDefStmt,
+                        DutyEnvelopeDefStmt,
+                        LfoDefStmt,
+                        PitchEnvDefStmt,
+                        NoteEnvDefStmt,
+                    ),
+                ):
+                    program.global_statements.append(statement)
+                else:
+                    self.ctx.add_error(
+                        code=ErrorCode.SEMANTIC_OUTSIDE_TRACK,
+                        line=token.line,
+                        column=token.column,
+                        message="トラック外ではエフェクト定義だけを使用できます。",
+                        severity="error",
+                        hint="選択コマンドはトラック内へ移動してください。",
+                        context=context_line(self.source, token),
+                    )
+                continue
             # Anything else before a track header is outside a track.
             self._warn_outside_track(token)
             self.ctx.advance()

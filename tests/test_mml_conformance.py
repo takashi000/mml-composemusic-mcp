@@ -135,7 +135,7 @@ def test_empty_and_unicode_inputs_do_not_crash_pipeline(mode):
     assert ErrorCode.SYNTAX_INVALID_TOKEN in error_codes(errors)
 
 
-def test_validate_full_pyxel_path_preserves_warning_and_summary():
+def test_validate_full_pyxel_path_supports_extension_and_summary():
     result = compose_mml(
         action="validate",
         mode="pyxel",
@@ -143,32 +143,43 @@ def test_validate_full_pyxel_path_preserves_warning_and_summary():
     )
     assert result["valid"] is True
     assert result["channel_summary"]
-    assert any(
-        warning["code"] == ErrorCode.SEMANTIC_UNSUPPORTED_FEATURE.value
-        for warning in result["warnings"]
-    )
+    assert not result["warnings"]
 
 
 @pytest.mark.parametrize(
-    ("source", "expected_warning_code"),
+    "source",
     [
-        ("A D10 c", ErrorCode.SEMANTIC_UNSUPPORTED_FEATURE),
-        ("A s1,2 c", ErrorCode.SEMANTIC_UNSUPPORTED_FEATURE),
-        ("A v+5 c", ErrorCode.SEMANTIC_UNSUPPORTED_FEATURE),
-        ("A @v0 c", ErrorCode.SEMANTIC_UNSUPPORTED_FEATURE),
-        ("A @@0 c", ErrorCode.SEMANTIC_UNSUPPORTED_FEATURE),
-        ("A MP1 c", ErrorCode.SEMANTIC_UNSUPPORTED_FEATURE),
-        ("A MPOF c", ErrorCode.SEMANTIC_UNSUPPORTED_FEATURE),
-        ("A EP1 c", ErrorCode.SEMANTIC_UNSUPPORTED_FEATURE),
-        ("A EPOF c", ErrorCode.SEMANTIC_UNSUPPORTED_FEATURE),
-        ("A EN1 c", ErrorCode.SEMANTIC_UNSUPPORTED_FEATURE),
-        ("A ENOF c", ErrorCode.SEMANTIC_UNSUPPORTED_FEATURE),
+        "A D10 c",
+        "A s1,2 c",
+        "A v+5 c",
+        "A @v0={15|10} @v0 c",
+        "A @0={0|1} @@0 c",
+        "A @MP1={0,10,5,0} MP1 c",
+        "A MPOF c",
+        "A @EP1={0|5} EP1 c",
+        "A EPOF c",
+        "A @EN1={0|1} EN1 c",
+        "A ENOF c",
     ],
 )
-def test_ppmck_new_commands_produce_warning(source, expected_warning_code):
+def test_ppmck_extension_commands_are_supported(source):
     _, _, _, errors = parse_pipeline(source, "ppmck")
     assert not any(e.severity == "error" for e in errors)
-    assert expected_warning_code in error_codes(errors)
+    assert ErrorCode.SEMANTIC_UNSUPPORTED_FEATURE not in error_codes(errors)
+
+
+def test_ppmck_definition_is_allowed_before_track():
+    _, _, sequence, errors = parse_pipeline("@v1={15|8}\nA @v1 c", "ppmck")
+    assert not errors
+    assert sequence.definitions["volume_envelopes"][1] == {
+        "points": [15],
+        "loop_points": [8],
+    }
+
+
+def test_ppmck_duplicate_definition_is_rejected():
+    _, _, _, errors = parse_pipeline("@v1={15}\n@v1={8}\nA c", "ppmck")
+    assert ErrorCode.SEMANTIC_DUPLICATE_DEFINITION in error_codes(errors)
 
 
 def test_ppmck_at_duty_in_pulse_channel():

@@ -63,10 +63,50 @@ PULSE_CHANNELS = {"Pulse1", "Pulse2"}
 class PpmckSemanticAnalyzer(SemanticAnalyzer):
     def __init__(self, source: str, program: Program) -> None:
         super().__init__(source, program)
+        self.note_sequence.mode = "ppmck"
         self.loop_start: int | None = None
+        self.detune_cents = 0.0
+
+    def _define(self, kind: str, slot: int, value: dict) -> None:
+        table = self.note_sequence.definitions[kind]
+        if slot in table:
+            self.ctx.add_error(
+                ErrorCode.SEMANTIC_DUPLICATE_DEFINITION,
+                0,
+                0,
+                f"エフェクトスロット {slot} は既に定義されています。",
+                "error",
+                "別のスロット番号を使用してください。",
+            )
+            return
+        table[slot] = value
 
     def analyze(self) -> tuple[NoteSequence, list[ErrorDetail]]:
         ns, errors = super().analyze()
+        references = (
+            (VolumeEnvelopeEvent, "volume_envelopes"),
+            (DutyEnvelopeEvent, "duty_envelopes"),
+            (LfoEvent, "lfos"),
+            (PitchEnvEvent, "pitch_envelopes"),
+            (NoteEnvEvent, "note_envelopes"),
+        )
+        for channel in ns.channels.values():
+            for event in channel.events:
+                for event_type, table_name in references:
+                    if (
+                        isinstance(event, event_type)
+                        and not event.is_definition
+                        and not getattr(event, "is_off", False)
+                        and event.slot not in ns.definitions[table_name]
+                    ):
+                        self.ctx.add_error(
+                            ErrorCode.SEMANTIC_UNDEFINED_REFERENCE,
+                            0,
+                            0,
+                            f"未定義のエフェクトスロット {event.slot} です。",
+                            "error",
+                            "先に同じ番号の定義を追加してください。",
+                        )
         if self.loop_start is not None:
             max_tick = max(ch.total_ticks for ch in ns.channels.values())
             for ch in ns.channels.values():
@@ -92,6 +132,7 @@ class PpmckSemanticAnalyzer(SemanticAnalyzer):
         self.gate_time = 1.0
         self.duty = 2
         self.tick_position = 0
+        self.detune_cents = 0.0
 
     def _analyze_track(self, track: Track) -> None:
         if track.channel == "Loop":
@@ -131,6 +172,7 @@ class PpmckSemanticAnalyzer(SemanticAnalyzer):
             velocity=self.velocity,
             duty=self.duty,
             gate_time=self.gate_time,
+            detune_cents=self.detune_cents,
         )
         self._add_event(event)
         self.tick_position += ticks
@@ -255,33 +297,37 @@ class PpmckSemanticAnalyzer(SemanticAnalyzer):
             return
 
     def _analyze_detune_cmd(self, stmt: DetuneCmdStmt) -> None:
+        self.detune_cents = float(stmt.value)
         self._add_event(DetuneEvent(tick_position=self.tick_position, value=stmt.value))
-        self.ctx.add_error(
-            code=ErrorCode.SEMANTIC_UNSUPPORTED_FEATURE,
-            line=stmt.line,
-            column=stmt.column,
-            message=f"ディチューン 'D{stmt.value}' はIR保持のみで合成に反映されません。",
-            severity="warning",
-            hint="現時点では無視されます。",
-            context=self._context_line(stmt),
-        )
 
     def _analyze_relative_volume(self, stmt: RelativeVolumeStmt) -> None:
+        self.velocity = clamp(self.velocity + stmt.delta, 0, 15)
         self._add_event(
             RelativeVolumeEvent(tick_position=self.tick_position, delta=stmt.delta)
         )
-        sign = "+" if stmt.delta > 0 else "-"
-        self.ctx.add_error(
-            code=ErrorCode.SEMANTIC_UNSUPPORTED_FEATURE,
-            line=stmt.line,
-            column=stmt.column,
-            message=f"相対音量 'v{sign}{abs(stmt.delta)}' はIR保持のみです。",
-            severity="warning",
-            hint="現時点では無視されます。",
-            context=self._context_line(stmt),
-        )
 
     def _analyze_sweep(self, stmt: SweepStmt) -> None:
+        if self.current_channel not in PULSE_CHANNELS:
+            self.ctx.add_error(
+                ErrorCode.SEMANTIC_CHANNEL_MISMATCH,
+                stmt.line,
+                stmt.column,
+                "スイープはPulseチャンネル専用です。",
+                "error",
+                "AまたはBトラックで使用してください。",
+                self._context_line(stmt),
+            )
+            return
+        if not 0 <= stmt.speed <= 7 or not 1 <= abs(stmt.depth) <= 7:
+            self.ctx.add_error(
+                ErrorCode.SEMANTIC_VALUE_OUT_OF_RANGE,
+                stmt.line,
+                stmt.column,
+                "スイープ値はspeed=0〜7、depth=±1〜±7で指定してください。",
+                "error",
+                context=self._context_line(stmt),
+            )
+            return
         self._add_event(
             SweepEvent(
                 tick_position=self.tick_position,
@@ -289,220 +335,140 @@ class PpmckSemanticAnalyzer(SemanticAnalyzer):
                 depth=stmt.depth,
             )
         )
-        self.ctx.add_error(
-            code=ErrorCode.SEMANTIC_UNSUPPORTED_FEATURE,
-            line=stmt.line,
-            column=stmt.column,
-            message=f"スイープ 's{stmt.speed},{stmt.depth}' はIR保持のみです。",
-            severity="warning",
-            hint="現時点では無視されます。",
-            context=self._context_line(stmt),
-        )
 
     def _analyze_vol_env_use(self, stmt: VolumeEnvelopeUseStmt) -> None:
         self._add_event(
             VolumeEnvelopeEvent(tick_position=self.tick_position, slot=stmt.slot)
         )
-        self.ctx.add_error(
-            code=ErrorCode.SEMANTIC_UNSUPPORTED_FEATURE,
-            line=stmt.line,
-            column=stmt.column,
-            message=f"音量エンベロープ '@v{stmt.slot}' はIR保持のみです。",
-            severity="warning",
-            hint="現時点では無視されます。",
-            context=self._context_line(stmt),
-        )
 
     def _analyze_vol_env_def(self, stmt: VolumeEnvelopeDefStmt) -> None:
-        self._add_event(
-            VolumeEnvelopeEvent(
-                tick_position=self.tick_position,
-                slot=stmt.slot,
-                points=stmt.points,
-                loop_points=stmt.loop_points,
-                is_definition=True,
+        self._define(
+            "volume_envelopes",
+            stmt.slot,
+            {"points": stmt.points, "loop_points": stmt.loop_points},
+        )
+        if self.current_channel is not None:
+            self._add_event(
+                VolumeEnvelopeEvent(
+                    tick_position=self.tick_position,
+                    slot=stmt.slot,
+                    points=stmt.points,
+                    loop_points=stmt.loop_points,
+                    is_definition=True,
+                )
             )
-        )
-        self.ctx.add_error(
-            code=ErrorCode.SEMANTIC_UNSUPPORTED_FEATURE,
-            line=stmt.line,
-            column=stmt.column,
-            message=f"音量エンベロープ定義 '@v{stmt.slot}={{...}}' はIR保持のみです。",
-            severity="warning",
-            hint="現時点では無視されます。",
-            context=self._context_line(stmt),
-        )
 
     def _analyze_duty_env_def(self, stmt: DutyEnvelopeDefStmt) -> None:
-        self._add_event(
-            DutyEnvelopeEvent(
-                tick_position=self.tick_position,
-                slot=stmt.slot,
-                points=stmt.points,
-                loop_points=stmt.loop_points,
-                is_definition=True,
+        self._define(
+            "duty_envelopes",
+            stmt.slot,
+            {"points": stmt.points, "loop_points": stmt.loop_points},
+        )
+        if self.current_channel is not None:
+            self._add_event(
+                DutyEnvelopeEvent(
+                    tick_position=self.tick_position,
+                    slot=stmt.slot,
+                    points=stmt.points,
+                    loop_points=stmt.loop_points,
+                    is_definition=True,
+                )
             )
-        )
-        self.ctx.add_error(
-            code=ErrorCode.SEMANTIC_UNSUPPORTED_FEATURE,
-            line=stmt.line,
-            column=stmt.column,
-            message=f"デューティエンベロープ定義 '@{stmt.slot}={{...}}' はIR保持のみです。",
-            severity="warning",
-            hint="現時点では無視されます。",
-            context=self._context_line(stmt),
-        )
 
     def _analyze_duty_env_use(self, stmt: DutyEnvelopeUseStmt) -> None:
-        self._add_event(
-            DutyEnvelopeEvent(tick_position=self.tick_position, slot=stmt.slot)
-        )
-        self.ctx.add_error(
-            code=ErrorCode.SEMANTIC_UNSUPPORTED_FEATURE,
-            line=stmt.line,
-            column=stmt.column,
-            message=f"デューティエンベロープ使用 '@@{stmt.slot}' はIR保持のみです。",
-            severity="warning",
-            hint="現時点では無視されます。",
-            context=self._context_line(stmt),
-        )
+        if self.current_channel is not None:
+            self._add_event(
+                DutyEnvelopeEvent(tick_position=self.tick_position, slot=stmt.slot)
+            )
 
     def _analyze_lfo_def(self, stmt: LfoDefStmt) -> None:
-        self._add_event(
-            LfoEvent(
-                tick_position=self.tick_position,
-                slot=stmt.slot,
-                delay=stmt.delay,
-                speed=stmt.speed,
-                depth=stmt.depth,
-                transition=stmt.transition,
-                is_definition=True,
+        if stmt.transition != 0 or stmt.speed <= 0:
+            self.ctx.add_error(
+                ErrorCode.SEMANTIC_VALUE_OUT_OF_RANGE,
+                stmt.line,
+                stmt.column,
+                "@MPはspeed>0、transition=0で指定してください。",
+                "error",
+                context=self._context_line(stmt),
             )
+            return
+        self._define(
+            "lfos",
+            stmt.slot,
+            {
+                "delay": stmt.delay,
+                "speed": stmt.speed,
+                "depth": stmt.depth,
+                "transition": stmt.transition,
+            },
         )
-        self.ctx.add_error(
-            code=ErrorCode.SEMANTIC_UNSUPPORTED_FEATURE,
-            line=stmt.line,
-            column=stmt.column,
-            message=f"LFO定義 '@MP{stmt.slot}={{...}}' はIR保持のみです。",
-            severity="warning",
-            hint="現時点では無視されます。",
-            context=self._context_line(stmt),
-        )
+        if self.current_channel is not None:
+            self._add_event(
+                LfoEvent(
+                    tick_position=self.tick_position,
+                    slot=stmt.slot,
+                    delay=stmt.delay,
+                    speed=stmt.speed,
+                    depth=stmt.depth,
+                    transition=stmt.transition,
+                    is_definition=True,
+                )
+            )
 
     def _analyze_lfo_use(self, stmt: LfoUseStmt) -> None:
         self._add_event(LfoEvent(tick_position=self.tick_position, slot=stmt.slot))
-        self.ctx.add_error(
-            code=ErrorCode.SEMANTIC_UNSUPPORTED_FEATURE,
-            line=stmt.line,
-            column=stmt.column,
-            message=f"LFO使用 'MP{stmt.slot}' はIR保持のみです。",
-            severity="warning",
-            hint="現時点では無視されます。",
-            context=self._context_line(stmt),
-        )
 
     def _analyze_lfo_off(self, stmt: LfoOffStmt) -> None:
         self._add_event(LfoEvent(tick_position=self.tick_position, slot=0, is_off=True))
-        self.ctx.add_error(
-            code=ErrorCode.SEMANTIC_UNSUPPORTED_FEATURE,
-            line=stmt.line,
-            column=stmt.column,
-            message="LFO解除 'MPOF' はIR保持のみです。",
-            severity="warning",
-            hint="現時点では無視されます。",
-            context=self._context_line(stmt),
-        )
 
     def _analyze_pitch_env_def(self, stmt: PitchEnvDefStmt) -> None:
-        self._add_event(
-            PitchEnvEvent(
-                tick_position=self.tick_position,
-                slot=stmt.slot,
-                points=stmt.points,
-                loop_points=stmt.loop_points,
-                is_definition=True,
+        self._define(
+            "pitch_envelopes",
+            stmt.slot,
+            {"points": stmt.points, "loop_points": stmt.loop_points},
+        )
+        if self.current_channel is not None:
+            self._add_event(
+                PitchEnvEvent(
+                    tick_position=self.tick_position,
+                    slot=stmt.slot,
+                    points=stmt.points,
+                    loop_points=stmt.loop_points,
+                    is_definition=True,
+                )
             )
-        )
-        self.ctx.add_error(
-            code=ErrorCode.SEMANTIC_UNSUPPORTED_FEATURE,
-            line=stmt.line,
-            column=stmt.column,
-            message=f"ピッチエンベロープ定義 '@EP{stmt.slot}={{...}}' はIR保持のみです。",
-            severity="warning",
-            hint="現時点では無視されます。",
-            context=self._context_line(stmt),
-        )
 
     def _analyze_pitch_env_use(self, stmt: PitchEnvUseStmt) -> None:
         self._add_event(PitchEnvEvent(tick_position=self.tick_position, slot=stmt.slot))
-        self.ctx.add_error(
-            code=ErrorCode.SEMANTIC_UNSUPPORTED_FEATURE,
-            line=stmt.line,
-            column=stmt.column,
-            message=f"ピッチエンベロープ使用 'EP{stmt.slot}' はIR保持のみです。",
-            severity="warning",
-            hint="現時点では無視されます。",
-            context=self._context_line(stmt),
-        )
 
     def _analyze_pitch_env_off(self, stmt: PitchEnvOffStmt) -> None:
         self._add_event(
             PitchEnvEvent(tick_position=self.tick_position, slot=0, is_off=True)
         )
-        self.ctx.add_error(
-            code=ErrorCode.SEMANTIC_UNSUPPORTED_FEATURE,
-            line=stmt.line,
-            column=stmt.column,
-            message="ピッチエンベロープ解除 'EPOF' はIR保持のみです。",
-            severity="warning",
-            hint="現時点では無視されます。",
-            context=self._context_line(stmt),
-        )
 
     def _analyze_note_env_def(self, stmt: NoteEnvDefStmt) -> None:
-        self._add_event(
-            NoteEnvEvent(
-                tick_position=self.tick_position,
-                slot=stmt.slot,
-                points=stmt.points,
-                loop_points=stmt.loop_points,
-                is_definition=True,
+        self._define(
+            "note_envelopes",
+            stmt.slot,
+            {"points": stmt.points, "loop_points": stmt.loop_points},
+        )
+        if self.current_channel is not None:
+            self._add_event(
+                NoteEnvEvent(
+                    tick_position=self.tick_position,
+                    slot=stmt.slot,
+                    points=stmt.points,
+                    loop_points=stmt.loop_points,
+                    is_definition=True,
+                )
             )
-        )
-        self.ctx.add_error(
-            code=ErrorCode.SEMANTIC_UNSUPPORTED_FEATURE,
-            line=stmt.line,
-            column=stmt.column,
-            message=f"ノートエンベロープ定義 '@EN{stmt.slot}={{...}}' はIR保持のみです。",
-            severity="warning",
-            hint="現時点では無視されます。",
-            context=self._context_line(stmt),
-        )
 
     def _analyze_note_env_use(self, stmt: NoteEnvUseStmt) -> None:
         self._add_event(NoteEnvEvent(tick_position=self.tick_position, slot=stmt.slot))
-        self.ctx.add_error(
-            code=ErrorCode.SEMANTIC_UNSUPPORTED_FEATURE,
-            line=stmt.line,
-            column=stmt.column,
-            message=f"ノートエンベロープ使用 'EN{stmt.slot}' はIR保持のみです。",
-            severity="warning",
-            hint="現時点では無視されます。",
-            context=self._context_line(stmt),
-        )
 
     def _analyze_note_env_off(self, stmt: NoteEnvOffStmt) -> None:
         self._add_event(
             NoteEnvEvent(tick_position=self.tick_position, slot=0, is_off=True)
-        )
-        self.ctx.add_error(
-            code=ErrorCode.SEMANTIC_UNSUPPORTED_FEATURE,
-            line=stmt.line,
-            column=stmt.column,
-            message="ノートエンベロープ解除 'ENOF' はIR保持のみです。",
-            severity="warning",
-            hint="現時点では無視されます。",
-            context=self._context_line(stmt),
         )
 
     def _analyze_tempo(self, stmt: TempoStmt) -> None:
@@ -517,7 +483,8 @@ class PpmckSemanticAnalyzer(SemanticAnalyzer):
                 context=self._context_line(stmt),
             )
             return
-        self.note_sequence.bpm = stmt.value
+        if self.tick_position == 0:
+            self.note_sequence.bpm = stmt.value
         self._add_event(TempoEvent(tick_position=self.tick_position, bpm=stmt.value))
 
     def _analyze_gate_time(self, stmt: GateTimeStmt) -> None:

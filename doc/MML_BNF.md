@@ -102,7 +102,7 @@
 <comment>         ::= ";" <string_to_eol>
 ```
 
-### 2.3 拡張コマンド（第1段階: IR 保持のみ、合成無視）
+### 2.3 合成拡張コマンド
 
 ```bnf
 <ppmck_ext_cmd>  ::= <relative_volume_cmd>
@@ -127,7 +127,7 @@
                     | "v-" <number>?        /* 1 〜 15 */
 
 <detune_cmd>      ::= "D" <signed_number>  /* -127 〜 126 */
-<sweep_cmd>       ::= "s" <number> "," <number>
+<sweep_cmd>       ::= "s" <number> "," <signed_number>
 
 <vol_envelope_def>::= "@v" <number> "=" "{" <number_list> "|" <number_list>? "}"
 <vol_envelope_use>::= "@v" <number>
@@ -224,7 +224,7 @@
 <tie_cmd>         ::= <tie> (<note> | <rest> | <number>)
 ```
 
-### 3.3 拡張コマンド（第1段階: IR 保持のみ、合成無視）
+### 3.3 合成拡張コマンド
 
 ```bnf
 <ext_cmd>         ::= <env_cmd> | <vib_cmd> | <gli_cmd>
@@ -261,19 +261,19 @@
 | `l` / `L` | 両方 | 1 〜 192 | 4 | |
 | `v` | ppmck | 0 〜 15 | 15 | |
 | `V` | pyxel | 0 〜 127 | 100 | |
-| `v+` / `v-` | ppmck | 1 〜 15 | 1 | 相対音量（IR保持のみ） |
+| `v+` / `v-` | ppmck | 1 〜 15 | 1 | 相対音量（0〜15へクランプ） |
 | `@` | ppmck | 0 〜 3 | 2 | デューティ比（Pulse系のみ） |
 | `@` | pyxel | 0 〜 3 | — | デューティ比（Pulse系のみ） |
 | `q` | ppmck | 1 〜 8 | 8 | クオンタイズ（gate_time = value / 8） |
 | `Q` | pyxel | 0 〜 100 | 80 | ゲートタイム（%） |
 | `t` / `T` | 両方 | 1 〜 | 120 | |
-| `D` | ppmck | -127 〜 126 | 0 | ディチューン（IR保持のみ） |
-| `s` | ppmck | 0 〜 15, 0 〜 7 | — | スイープ `s<x>,<y>`（IR保持のみ） |
-| `@v` | ppmck | 0 〜 255 | — | 音量エンベロープ（IR保持のみ） |
-| `@@` | ppmck | 0 〜 255 | — | デューティエンベロープ（IR保持のみ） |
-| `@MP` / `MP` / `MPOF` | ppmck | 0 〜 255 | — | LFO（IR保持のみ） |
-| `@EP` / `EP` / `EPOF` | ppmck | 0 〜 255 | — | ピッチエンベロープ（IR保持のみ） |
-| `@EN` / `EN` / `ENOF` | ppmck | 0 〜 255 | — | ノートエンベロープ（IR保持のみ） |
+| `D` | ppmck | -127 〜 126 | 0 | cent単位ディチューン |
+| `s` | ppmck | speed 0〜7, depth ±1〜±7 | — | Pulseハードウェアスイープ |
+| `@v` | ppmck | 0 〜 255 | — | 48 tick単位の音量エンベロープ |
+| `@@` | ppmck | 0 〜 255 | — | 48 tick単位のデューティエンベロープ |
+| `@MP` / `MP` / `MPOF` | ppmck | 0 〜 255 | — | 三角LFO |
+| `@EP` / `EP` / `EPOF` | ppmck | 0 〜 255 | — | cent単位ピッチエンベロープ |
+| `@EN` / `EN` / `ENOF` | ppmck | 0 〜 255 | — | 絶対半音オフセット列 |
 | `K` | pyxel | -127 〜 127 | 0 | トランスポーズ（半音） |
 | `Y` | pyxel | -127 〜 127 | 0 | ディチューン（セント） |
 
@@ -283,8 +283,9 @@
 
 - 本 BNF は `mml-composemusic-mcp` の**サポート範囲**を定義するものであり、オリジナルの PPMCK や Pyxel の全機能を網羅するものではない。
 - 第2段階予定コマンドは設計予約として記載するが、現在の受理文法には含めない。
-- ppmck モードの `@v` / `@@` / `@MP` / `@EP` / `@EN`、および `D` / `s` / `v+` / `v-` は構文解析して IR へ保持し、合成には反映しない。未対応を `SEMANTIC_UNSUPPORTED_FEATURE` で警告する。
-- pyxel モードの `@ENV` / `@VIB` / `@GLI` も同様に IR 保持のみで、`SEMANTIC_UNSUPPORTED_FEATURE` 警告を返す。
+- ppmck モード名は構文互換の識別子であり、拡張の挙動は本プロジェクト独自仕様である。PPMCK/mckc互換は保証しない。
+- ppmck の列型エンベロープは1要素48 tickで、`|`以降を反復し、反復がなければ末尾値を保持する。`D`/`@EP`はcent、`@EN`は絶対半音、`@MP`は`delay,period,depth,0`である。
+- pyxel の `@ENV` は`target,duration`組、`@VIB`は`delay,period,depth_cents`、`@GLI`は`initial_offset_cents,duration`である。slot 0は解除を表す。
 - コマンド文字は ppmck では小文字、pyxel では大文字を使用する。音符・休符も同じ規則に従う。ただし ppmck の `D`（ディチューン）は大文字のみ受理する（小文字 `d` は音符）。
 - `^` は ppmck モード専用のタイ、`&` は両モード共通のスラー（slur）として扱う。
 - 詳細な実装アーキテクチャは [Design.md](Design.md) を参照。

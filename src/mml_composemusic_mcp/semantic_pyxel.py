@@ -54,9 +54,35 @@ class RepeatFrame:
 class PyxelSemanticAnalyzer(SemanticAnalyzer):
     def __init__(self, source: str, program: Program) -> None:
         super().__init__(source, program)
+        self.note_sequence.mode = "pyxel"
         self.transpose = 0
         self.detune_cents = 0.0
         self.repeat_stack: list[RepeatFrame] = []
+
+    def analyze(self) -> tuple[NoteSequence, list[ErrorDetail]]:
+        ns, errors = super().analyze()
+        references = (
+            (EnvelopeEvent, "envelopes"),
+            (VibratoEvent, "vibratos"),
+            (GlideEvent, "glides"),
+        )
+        for channel in ns.channels.values():
+            for event in channel.events:
+                for event_type, table_name in references:
+                    if (
+                        isinstance(event, event_type)
+                        and event.slot != 0
+                        and event.slot not in ns.definitions[table_name]
+                    ):
+                        self.ctx.add_error(
+                            ErrorCode.SEMANTIC_UNDEFINED_REFERENCE,
+                            0,
+                            0,
+                            f"未定義の@{table_name}スロット {event.slot} です。",
+                            "error",
+                            "パラメータ付きで定義してから選択してください。",
+                        )
+        return ns, errors
 
     def _reset_state(self, track: Track) -> None:
         self.octave = 4
@@ -256,7 +282,8 @@ class PyxelSemanticAnalyzer(SemanticAnalyzer):
                 context=self._context_line(stmt),
             )
             return
-        self.note_sequence.bpm = stmt.value
+        if self.tick_position == 0:
+            self.note_sequence.bpm = stmt.value
         self._add_event(TempoEvent(tick_position=self.tick_position, bpm=stmt.value))
 
     def _analyze_transpose(self, stmt: TransposeStmt) -> None:
@@ -358,7 +385,33 @@ class PyxelSemanticAnalyzer(SemanticAnalyzer):
             self._add_event(ev)
             return
         if stmt.params:
+            table_name = {
+                "ENV": "envelopes",
+                "VIB": "vibratos",
+                "GLI": "glides",
+            }[stmt.cmd]
+            if stmt.slot in self.note_sequence.definitions[table_name]:
+                self.ctx.add_error(
+                    ErrorCode.SEMANTIC_DUPLICATE_DEFINITION,
+                    stmt.line,
+                    stmt.column,
+                    f"@{stmt.cmd}スロット {stmt.slot} は既に定義されています。",
+                    "error",
+                    "別のスロット番号を使用してください。",
+                    self._context_line(stmt),
+                )
+                return
             if stmt.cmd == "ENV":
+                if len(stmt.params) % 2:
+                    self.ctx.add_error(
+                        ErrorCode.SEMANTIC_VALUE_OUT_OF_RANGE,
+                        stmt.line,
+                        stmt.column,
+                        "@ENVのパラメータはtarget,durationの組で指定してください。",
+                        "error",
+                        context=self._context_line(stmt),
+                    )
+                    return
                 points = []
                 for i in range(1, len(stmt.params), 2):
                     duration = stmt.params[i]
@@ -373,6 +426,9 @@ class PyxelSemanticAnalyzer(SemanticAnalyzer):
                     slot=stmt.slot,
                     points=points,
                 )
+                self.note_sequence.definitions["envelopes"][stmt.slot] = {
+                    "points": points
+                }
             elif stmt.cmd == "VIB":
                 if len(stmt.params) >= 3:
                     params = {
@@ -387,6 +443,7 @@ class PyxelSemanticAnalyzer(SemanticAnalyzer):
                     slot=stmt.slot,
                     params=params,
                 )
+                self.note_sequence.definitions["vibratos"][stmt.slot] = params
             else:
                 if len(stmt.params) >= 2:
                     params = {
@@ -400,6 +457,7 @@ class PyxelSemanticAnalyzer(SemanticAnalyzer):
                     slot=stmt.slot,
                     params=params,
                 )
+                self.note_sequence.definitions["glides"][stmt.slot] = params
             self._add_event(ev)
         else:
             if stmt.cmd == "ENV":
@@ -409,15 +467,6 @@ class PyxelSemanticAnalyzer(SemanticAnalyzer):
             else:
                 ev = GlideEvent(tick_position=self.tick_position, slot=stmt.slot)
             self._add_event(ev)
-        self.ctx.add_error(
-            code=ErrorCode.SEMANTIC_UNSUPPORTED_FEATURE,
-            line=stmt.line,
-            column=stmt.column,
-            message=f"@{stmt.cmd} は第1段階では未サポート、無視されます。",
-            severity="warning",
-            hint="合成には反映されませんが、IRとして保持されます。",
-            context=self._context_line(stmt),
-        )
 
 
 def analyze_pyxel(
