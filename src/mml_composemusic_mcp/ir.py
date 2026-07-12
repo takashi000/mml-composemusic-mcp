@@ -5,30 +5,53 @@ from enum import Enum
 from typing import Any
 
 
-class ErrorCode(Enum):
-    """Machine-readable error codes."""
+class ErrorPhase(Enum):
+    """Phase where an error occurred."""
 
+    LEXER = "lexer"
+    SYNTAX = "syntax"
+    SEMANTIC = "semantic"
+    RUNTIME = "runtime"
+    API = "api"
+
+
+class ErrorCode(Enum):
+    """Machine-readable error codes.
+
+    Errors are classified by phase:
+    - SYNTAX_*: token sequence violates the BNF grammar.
+    - SEMANTIC_*: syntactically valid but semantically invalid (range,
+      channel mismatch, undefined reference, etc.).
+    - RUNTIME_*: failure during synthesis or WAV output.
+    - VALIDATION_*: API-level parameter validation errors.
+    """
+
+    # --- Syntax errors (Parser phase) ---
     SYNTAX_INVALID_TOKEN = "SYNTAX_INVALID_TOKEN"
     SYNTAX_INVALID_NUMBER = "SYNTAX_INVALID_NUMBER"
-    SYNTAX_VALUE_OUT_OF_RANGE = "SYNTAX_VALUE_OUT_OF_RANGE"
     SYNTAX_UNEXPECTED_TOKEN = "SYNTAX_UNEXPECTED_TOKEN"
     SYNTAX_UNTERMINATED_REPEAT = "SYNTAX_UNTERMINATED_REPEAT"
     SYNTAX_UNMATCHED_REPEAT_END = "SYNTAX_UNMATCHED_REPEAT_END"
     SYNTAX_UNTERMINATED_TIE = "SYNTAX_UNTERMINATED_TIE"
     SYNTAX_INVALID_TRACK_HEADER = "SYNTAX_INVALID_TRACK_HEADER"
     SYNTAX_DUPLICATE_TRACK = "SYNTAX_DUPLICATE_TRACK"
-    SYNTAX_EMPTY_TRACK = "SYNTAX_EMPTY_TRACK"
-    SYNTAX_NOTE_OUT_OF_RANGE = "SYNTAX_NOTE_OUT_OF_RANGE"
-    SYNTAX_CHANNEL_MISMATCH = "SYNTAX_CHANNEL_MISMATCH"
-    SYNTAX_OUTSIDE_TRACK = "SYNTAX_OUTSIDE_TRACK"
     SYNTAX_UNTERMINATED_HEADER = "SYNTAX_UNTERMINATED_HEADER"
-    SYNTAX_UNDEFINED_REFERENCE = "SYNTAX_UNDEFINED_REFERENCE"
 
-    SYSTEM_SYNTHESIS_FAILED = "SYSTEM_SYNTHESIS_FAILED"
-    SYSTEM_WAV_WRITE_FAILED = "SYSTEM_WAV_WRITE_FAILED"
-    SYSTEM_INTERNAL_ERROR = "SYSTEM_INTERNAL_ERROR"
+    # --- Semantic errors (SemanticAnalyzer phase) ---
+    SEMANTIC_VALUE_OUT_OF_RANGE = "SEMANTIC_VALUE_OUT_OF_RANGE"
+    SEMANTIC_NOTE_OUT_OF_RANGE = "SEMANTIC_NOTE_OUT_OF_RANGE"
+    SEMANTIC_CHANNEL_MISMATCH = "SEMANTIC_CHANNEL_MISMATCH"
+    SEMANTIC_EMPTY_TRACK = "SEMANTIC_EMPTY_TRACK"
+    SEMANTIC_OUTSIDE_TRACK = "SEMANTIC_OUTSIDE_TRACK"
+    SEMANTIC_UNDEFINED_REFERENCE = "SEMANTIC_UNDEFINED_REFERENCE"
+    SEMANTIC_UNSUPPORTED_FEATURE = "SEMANTIC_UNSUPPORTED_FEATURE"
 
-    # API-level errors (parameter validation, not MML syntax)
+    # --- Runtime errors (Synthesizer phase) ---
+    RUNTIME_SYNTHESIS_FAILED = "RUNTIME_SYNTHESIS_FAILED"
+    RUNTIME_WAV_WRITE_FAILED = "RUNTIME_WAV_WRITE_FAILED"
+    RUNTIME_INTERNAL_ERROR = "RUNTIME_INTERNAL_ERROR"
+
+    # --- API-level errors (parameter validation, not MML syntax) ---
     VALIDATION_MISSING_PARAMETER = "VALIDATION_MISSING_PARAMETER"
     VALIDATION_INVALID_MODE = "VALIDATION_INVALID_MODE"
     VALIDATION_INVALID_ACTION = "VALIDATION_INVALID_ACTION"
@@ -39,6 +62,7 @@ class ErrorDetail:
     """Structured error/warning detail."""
 
     code: ErrorCode
+    phase: ErrorPhase
     line: int
     column: int
     message: str
@@ -49,6 +73,7 @@ class ErrorDetail:
     def to_dict(self) -> dict[str, Any]:
         return {
             "code": self.code.value,
+            "phase": self.phase.value,
             "line": self.line,
             "column": self.column,
             "message": self.message,

@@ -6,10 +6,12 @@ from pathlib import Path
 
 from fastmcp import FastMCP
 
-from .ir import ErrorCode, ErrorDetail, NoteSequence
+from .ir import ErrorCode, ErrorDetail, ErrorPhase, NoteSequence
 from .lexer import tokenize
 from .parser_ppmck import parse_ppmck
 from .parser_pyxel import parse_pyxel
+from .semantic_ppmck import analyze_ppmck
+from .semantic_pyxel import analyze_pyxel
 from .synthesizer import build_channel_summary, synthesize, write_wav
 from .templates import get_template
 
@@ -40,16 +42,25 @@ def _split_errors(errors: list[ErrorDetail]) -> tuple[list[dict], list[dict]]:
     return errs, warns
 
 
-def _parse_mml(mml: str, mode: str) -> tuple[dict, list[ErrorDetail]]:
+def _parse_mml(mml: str, mode: str) -> tuple[dict | None, list[ErrorDetail]]:
+    """Run lexer, parser, and semantic analyzer for the given mode."""
     tokens = tokenize(mml, mode)
+
     if mode == "ppmck":
-        note_sequence, errors = parse_ppmck(mml, tokens)
+        program, errors = parse_ppmck(mml, tokens)
+        if not _is_error(errors):
+            note_sequence, semantic_errors = analyze_ppmck(mml, program)
+            errors.extend(semantic_errors)
     elif mode == "pyxel":
-        note_sequence, errors = parse_pyxel(mml, tokens)
+        program, errors = parse_pyxel(mml, tokens)
+        if not _is_error(errors):
+            note_sequence, semantic_errors = analyze_pyxel(mml, program)
+            errors.extend(semantic_errors)
     else:
         errors = [
             ErrorDetail(
                 code=ErrorCode.VALIDATION_INVALID_MODE,
+                phase=ErrorPhase.API,
                 line=0,
                 column=0,
                 message=f"未知のモード '{mode}' です。",
@@ -57,6 +68,9 @@ def _parse_mml(mml: str, mode: str) -> tuple[dict, list[ErrorDetail]]:
                 hint="mode は 'ppmck' または 'pyxel' を指定してください。",
             )
         ]
+        note_sequence = None
+
+    if _is_error(errors):
         note_sequence = None
     return (note_sequence.to_dict() if note_sequence else None), errors
 
@@ -89,6 +103,7 @@ def compose_mml(
                     "errors": [
                         {
                             "code": ErrorCode.VALIDATION_MISSING_PARAMETER.value,
+                            "phase": ErrorPhase.API.value,
                             "line": 0,
                             "column": 0,
                             "message": "mml と mode は compose/validate の必須パラメータです。",
@@ -136,7 +151,8 @@ def compose_mml(
                     "validation": {
                         "errors": [
                             {
-                                "code": ErrorCode.SYSTEM_SYNTHESIS_FAILED.value,
+                                "code": ErrorCode.RUNTIME_SYNTHESIS_FAILED.value,
+                                "phase": ErrorPhase.RUNTIME.value,
                                 "line": 0,
                                 "column": 0,
                                 "message": f"音声合成中にエラーが発生しました: {exc}",
@@ -177,7 +193,8 @@ def compose_mml(
                 "validation": {
                     "errors": [
                         {
-                            "code": ErrorCode.SYSTEM_INTERNAL_ERROR.value,
+                            "code": ErrorCode.RUNTIME_INTERNAL_ERROR.value,
+                            "phase": ErrorPhase.RUNTIME.value,
                             "line": 0,
                             "column": 0,
                             "message": f"内部エラーが発生しました: {exc}",
@@ -195,6 +212,7 @@ def compose_mml(
             "errors": [
                 {
                     "code": ErrorCode.VALIDATION_INVALID_ACTION.value,
+                    "phase": ErrorPhase.API.value,
                     "line": 0,
                     "column": 0,
                     "message": f"未知の action '{action}' です。",

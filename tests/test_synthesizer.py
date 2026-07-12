@@ -158,7 +158,7 @@ def test_write_wav_failure(tmp_path):
     if errors:
         from mml_composemusic_mcp.ir import ErrorCode
 
-        assert errors[0].code == ErrorCode.SYSTEM_WAV_WRITE_FAILED
+        assert errors[0].code == ErrorCode.RUNTIME_WAV_WRITE_FAILED
 
 
 # --- Channel summary ---

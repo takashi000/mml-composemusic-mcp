@@ -27,11 +27,11 @@ class TokenType(Enum):
     SHARP = auto()
     FLAT = auto()
     DOT = auto()
-    TEXT = auto()
     AT = auto()
     TRANSPOSE = auto()
     DETUNE = auto()
     EXT_CMD = auto()  # @ENV, @VIB, @GLI
+    INVALID = auto()  # unrecognised character
     EOF = auto()
 
 
@@ -89,18 +89,10 @@ class Lexer:
             start += self._advance()
         return start
 
-    def _read_header_value(self) -> str:
-        value = ""
-        if self._peek() == '"':
-            self._advance()
-            while self.pos < len(self.source) and self._peek() not in '"\r\n':
-                value += self._advance()
-            if self._peek() == '"':
-                self._advance()
-            else:
-                # Return raw unterminated header; parser reports error
-                pass
-        return value
+    def _emit(self, ttype: TokenType, value: str, raw: str = "") -> None:
+        self.tokens.append(
+            Token(ttype, value, self.line, self.column - len(raw), raw or value)
+        )
 
     def tokenize(self) -> list[Token]:
         while self.pos < len(self.source):
@@ -108,22 +100,14 @@ class Lexer:
             if self.pos >= len(self.source):
                 break
             ch = self._peek()
-            start_line = self.line
-            start_col = self.column
-
             if self.mode == "ppmck":
-                self._tokenize_ppmck(ch, start_line, start_col)
+                self._tokenize_ppmck(ch)
             else:
-                self._tokenize_pyxel(ch, start_line, start_col)
+                self._tokenize_pyxel(ch)
         self.tokens.append(Token(TokenType.EOF, "", self.line, self.column))
         return self.tokens
 
-    def _emit(self, ttype: TokenType, value: str, raw: str = "") -> None:
-        self.tokens.append(
-            Token(ttype, value, self.line, self.column - len(raw), raw or value)
-        )
-
-    def _tokenize_ppmck(self, ch: str, start_line: int, start_col: int) -> None:  # noqa: ARG002
+    def _tokenize_ppmck(self, ch: str) -> None:
         if ch == "\n":
             self._advance()
             return
@@ -182,36 +166,36 @@ class Lexer:
             return
         if ch.isalpha():
             cmd = self._advance()
-            if ch in "olvtq":
+            lower = cmd.lower()
+            if lower in "olvtq":
                 num = self._read_number()
                 raw = cmd + num
-                if ch == "o":
+                if lower == "o":
                     self._emit(TokenType.OCTAVE, num, raw)
-                elif ch == "l":
+                elif lower == "l":
                     self._emit(TokenType.LENGTH, num, raw)
-                elif ch == "v":
+                elif lower == "v":
                     self._emit(TokenType.VOLUME, num, raw)
-                elif ch == "t":
+                elif lower == "t":
                     self._emit(TokenType.TEMPO, num, raw)
-                elif ch == "q":
+                elif lower == "q":
                     self._emit(TokenType.DUTY, num, raw)
                 return
-            # Note commands
-            note = ch.lower()
+            note = lower
             if note in "cdefgabr":
                 if note == "r":
                     self._emit(TokenType.REST, note, note)
                 else:
                     self._emit(TokenType.NOTE, note, note)
                 return
-            # Unknown command
-            self._emit(TokenType.TEXT, cmd, cmd)
+            # Unknown command: emit as invalid token for parser to report
+            self._emit(TokenType.INVALID, cmd, cmd)
             return
         # Fallback invalid char
         raw = self._advance()
-        self._emit(TokenType.TEXT, raw, raw)
+        self._emit(TokenType.INVALID, raw, raw)
 
-    def _tokenize_pyxel(self, ch: str, start_line: int, start_col: int) -> None:  # noqa: ARG002
+    def _tokenize_pyxel(self, ch: str) -> None:
         if ch == "\n":
             self._advance()
             return
@@ -299,11 +283,11 @@ class Lexer:
                 else:
                     self._emit(TokenType.NOTE, note, note)
                 return
-            self._emit(TokenType.TEXT, cmd, cmd)
+            self._emit(TokenType.INVALID, cmd, cmd)
             return
-        # Fallback
+        # Fallback invalid char
         raw = self._advance()
-        self._emit(TokenType.TEXT, raw, raw)
+        self._emit(TokenType.INVALID, raw, raw)
 
 
 def tokenize(source: str, mode: str = "ppmck") -> list[Token]:

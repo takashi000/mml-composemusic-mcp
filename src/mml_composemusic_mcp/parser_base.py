@@ -1,8 +1,9 @@
 """Base parser utilities shared between ppmck and pyxel parsers."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
-from .ir import ErrorCode, ErrorDetail
+from .ast_nodes import ASTNode
+from .ir import ErrorCode, ErrorDetail, ErrorPhase
 from .lexer import Token, TokenType
 
 
@@ -10,11 +11,7 @@ from .lexer import Token, TokenType
 class ParserContext:
     tokens: list[Token]
     pos: int = 0
-    errors: list[ErrorDetail] = None  # type: ignore[assignment]
-
-    def __post_init__(self) -> None:
-        if self.errors is None:
-            self.errors = []
+    errors: list[ErrorDetail] = field(default_factory=list)
 
     def peek(self, offset: int = 0) -> Token:
         idx = self.pos + offset
@@ -46,9 +43,11 @@ class ParserContext:
         hint: str = "",
         context: str = "",
     ) -> None:
+        phase = _code_to_phase(code)
         self.errors.append(
             ErrorDetail(
                 code=code,
+                phase=phase,
                 line=line,
                 column=column,
                 message=message,
@@ -58,9 +57,32 @@ class ParserContext:
             )
         )
 
+    def add_invalid_token_error(self, token: Token, context: str = "") -> None:
+        self.add_error(
+            code=ErrorCode.SYNTAX_INVALID_TOKEN,
+            line=token.line,
+            column=token.column,
+            message=f"無効な文字 '{token.raw}' が見つかりました。",
+            severity="error",
+            hint="MMLコマンド（c,d,e,f,g,a,b,r,o,l,v,t,q など）を使用してください。",
+            context=context,
+        )
+
 
 class ParserError(Exception):
+    """Raised by parsers to abort a single statement and recover."""
+
     pass
+
+
+def _code_to_phase(code: ErrorCode) -> ErrorPhase:
+    if code.value.startswith("SYNTAX_"):
+        return ErrorPhase.SYNTAX
+    if code.value.startswith("SEMANTIC_"):
+        return ErrorPhase.SEMANTIC
+    if code.value.startswith("RUNTIME_"):
+        return ErrorPhase.RUNTIME
+    return ErrorPhase.API
 
 
 def length_value_to_ticks(length: int, dots: int, ticks_per_quarter: int = 192) -> int:
@@ -90,3 +112,12 @@ def note_to_midi(note: str, octave: int, accidental: int = 0) -> int:
 
 def clamp(value: int, min_val: int, max_val: int) -> int:
     return max(min_val, min(value, max_val))
+
+
+def context_line(source: str, node: ASTNode | Token) -> str:
+    """Return the source line for a node or token."""
+    lines = source.splitlines()
+    line = getattr(node, "line", 1)
+    if 1 <= line <= len(lines):
+        return lines[line - 1]
+    return ""

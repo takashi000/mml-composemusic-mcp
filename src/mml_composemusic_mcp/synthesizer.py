@@ -10,6 +10,7 @@ from .ir import (
     DutyEvent,
     ErrorCode,
     ErrorDetail,
+    ErrorPhase,
     NoteEvent,
     NoteSequence,
     RestEvent,
@@ -262,7 +263,8 @@ def write_wav(path: Path, wave_data: np.ndarray, sample_rate: int) -> list[Error
     except Exception as exc:
         errors.append(
             ErrorDetail(
-                code=ErrorCode.SYSTEM_WAV_WRITE_FAILED,
+                code=ErrorCode.RUNTIME_WAV_WRITE_FAILED,
+                phase=ErrorPhase.RUNTIME,
                 line=0,
                 column=0,
                 message=f"WAVファイルの出力に失敗しました: {exc}",

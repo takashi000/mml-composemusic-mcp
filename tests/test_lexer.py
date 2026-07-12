@@ -25,3 +25,13 @@ def test_pyxel_repeat():
     tokens = tokenize("[ C D ]2", "pyxel")
     assert any(t.type == TokenType.REPEAT_START for t in tokens)
     assert any(t.type == TokenType.REPEAT_END for t in tokens)
+
+
+def test_ppmck_invalid_token():
+    tokens = tokenize("A t120 l4 o4 x c", "ppmck")
+    assert any(t.type == TokenType.INVALID for t in tokens)
+
+
+def test_pyxel_invalid_token():
+    tokens = tokenize("0: T120 L4 O4 X C", "pyxel")
+    assert any(t.type == TokenType.INVALID for t in tokens)
