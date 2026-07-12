@@ -1,359 +1,253 @@
 # mml-composemusic-mcp
 
-レトロチップ音源（2A03 APU）風のMMLをLLMに作曲させるためのMCPサーバです。
+LLMにMMLを書かせ、レトロゲーム機風の音楽をWAVとして生成するMCPサーバです。
 
-`compose_mml` という1つのツールで、MMLの**作曲（WAV生成）**、**構文検証**、**テンプレート生成**を行えます。
+Pulse 2ch、Triangle 1ch、Noise 1chの構成を持つ簡易2A03 APU風シンセサイザーを内蔵しています。MCPクライアントから単一の`compose_mml`ツールを呼び出すことで、作曲、検証、作例テンプレートの取得まで行えます。
 
----
+> [!IMPORTANT]
+> `ppmck`と`pyxel`は、このプロジェクトが受理するMML構文モードの名前です。オリジナルのPPMCK/mckcやPyxelとの完全な互換性は保証しません。
 
-## 目次
+## 主な機能
 
-1. [機能概要](#機能概要)
-2. [動作環境](#動作環境)
-3. [インストール](#インストール)
-4. [MCPクライアントへの登録](#mcpクライアントへの登録)
-5. [ツールの使い方](#ツールの使い方)
-6. [MML形式](#mml形式)
-7. [テスト・開発](#テスト開発)
-8. [ディレクトリ構成](#ディレクトリ構成)
-9. [ライセンス](#ライセンス)
+- MMLを解析し、モノラル16-bit PCMのWAVファイルを生成
+- 構文・値域・チャンネル適合性を合成前に検証
+- Pulse1、Pulse2、Triangle、Noiseの4チャンネルに対応
+- ppmck風の小文字MMLと、Pyxel風の大文字MMLに対応
+- 音量・音色エンベロープ、ビブラート、LFO、グライド、スイープなどを合成へ反映
+- LLMがコピーして改変できる8種類の作例テンプレートを収録
+- stdio、HTTP、SSE、Streamable HTTPトランスポートに対応
 
----
+## 必要環境
 
-## 機能概要
-
-| 機能 | 説明 |
-|---|---|
-| `compose` | MMLを解析し、レトロAPU風の矩形波/三角波/ノイズでWAVファイルを生成する |
-| `validate` | MMLの構文を検証し、エラー・警告・チャンネル概要を返す |
-| `template` | `ppmck` / `pyxel` 用のテンプレートMMLを生成する |
-
-### 対応MML形式
-
-| モード | 特徴 |
-|---|---|
-| `ppmck` | PPMCKインスパイアのクラシックAPU準拠形式。小文字コマンド、`A`/`B`/`T`/`N` トラック |
-| `pyxel` | Pyxel MML準拠形式。大文字コマンド、`0:`〜`3:` トラック、リピート・ゲートタイム対応 |
-
----
-
-## 動作環境
-
-- Python 3.14 以上
+- Python 3.14以上
 - [uv](https://docs.astral.sh/uv/)（推奨）
-- 依存パッケージ: `fastmcp`, `numpy`
 
----
+## セットアップ
 
-## インストール
-
-### 1. リポジトリをクローンまたは配置
-
-```bash
-cd C:\\path\\to\\mml-composemusic-mcp
-```
-
-### 2. 依存関係をインストール
-
-`uv` を使う場合:
+リポジトリを取得し、プロジェクトのディレクトリで依存関係をインストールします。
 
 ```bash
 uv sync
-```
-
-`pip` を使う場合:
-
-```bash
-pip install -e .
-```
-
-### 3. 起動確認
-
-```bash
 uv run mml-composemusic-mcp --help
 ```
 
-以下のように表示されればOKです。
+pipを使う場合は、仮想環境内で次のようにインストールできます。
 
+```bash
+python -m pip install -e .
+mml-composemusic-mcp --help
 ```
-usage: mml-composemusic-mcp [-h] [--output-dir OUTPUT_DIR]
-       [--transport {stdio,http,sse,streamable-http}] [--host HOST] [--port PORT]
-```
-
----
 
 ## MCPクライアントへの登録
 
-### Claude Desktop の場合
-
-1. 設定ファイルを開きます。
-
-   | OS | パス |
-   |---|---|
-   | Windows | `%APPDATA%\Claude\claude_desktop_config.json` |
-   | macOS | `~/Library/Application Support/Claude/claude_desktop_config.json` |
-
-2. `mcpServers` に以下を追加します。
-
-   ```json
-   {
-     "mcpServers": {
-       "mml-composemusic": {
-         "command": "uv",
-         "args": [
-           "run",
-           "--project",
-           "C:\\path\\to\\mml-composemusic-mcp",
-           "mml-composemusic-mcp",
-           "--output-dir",
-           "C:\\path\\to\\mml-composemusic-mcp\\data"
-         ]
-       }
-     }
-   }
-   ```
-
-3. Claude Desktop を再起動します。
-
-### 設定ファイル例
-
-[`doc/mcp-client-config-example.json`](doc/mcp-client-config-example.json) に設定例があります。必要に応じてコピーしてください。
-
-### トランスポートの選択
-
-| トランスポート | 用途 | 設定方法 |
-|---|---|---|
-| `stdio` | 標準的なMCPクライアント接続（デフォルト） | `command`/`args` で指定 |
-| `http` | HTTPエンドポイント | `--transport http` で起動後、`url` で接続 |
-| `sse` | Server-Sent Events | `--transport sse` で起動後、`url` で接続 |
-| `streamable-http` | Streamable HTTP | `--transport streamable-http` で起動 |
-
-#### SSEで使う場合の例
-
-```bash
-uv run mml-composemusic-mcp --transport sse --port 8080 --output-dir ./data
-```
+標準入出力で起動する設定例です。`C:\path\to\mml-composemusic-mcp`と出力先を実際の絶対パスへ置き換えてください。
 
 ```json
 {
   "mcpServers": {
     "mml-composemusic": {
-      "url": "http://127.0.0.1:8080/sse"
+      "command": "uv",
+      "args": [
+        "run",
+        "--project",
+        "C:\\path\\to\\mml-composemusic-mcp",
+        "mml-composemusic-mcp",
+        "--output-dir",
+        "C:\\path\\to\\mml-composemusic-mcp\\data"
+      ]
     }
   }
 }
 ```
 
-### 注意点
+`--output-dir`を省略した場合は、サーバの作業ディレクトリにある`./data`へ出力します。MCPクライアントによって作業ディレクトリが異なるため、通常は絶対パスの指定を推奨します。
 
-- `--output-dir` は相対パスでも動きますが、MCPクライアントの作業ディレクトリが不定なため、**絶対パスを推奨**します。
-- 初回起動時は `uv` が依存関係を解決するため、少し時間がかかることがあります。
+HTTP系トランスポートで手動起動する場合は、次のオプションを利用できます。
 
----
+```bash
+uv run mml-composemusic-mcp \
+  --transport streamable-http \
+  --host 127.0.0.1 \
+  --port 8080 \
+  --output-dir ./data
+```
 
-## ツールの使い方
+利用可能な`--transport`は`stdio`（デフォルト）、`http`、`sse`、`streamable-http`です。HTTP側の接続URLは、使用するFastMCPとMCPクライアントのトランスポート設定に合わせてください。
 
-### ツール名
+## LLMからの使い方
 
-`compose_mml`
+公開されるツールは`compose_mml`の1つです。基本的には、テンプレートを取得して編集し、検証してから合成します。
 
-### 引数
+1. `action: "template"`で作例を取得する
+2. 作りたい曲に合わせてLLMがMMLを書き換える
+3. `action: "validate"`でエラーと警告を確認する
+4. 問題がなければ`action: "compose"`でWAVを生成する
 
-| 引数名 | 型 | 必須 | デフォルト | 説明 |
+MCPクライアントでは、たとえば次のように依頼できます。
+
+> pyxelモードのvibrato_leadテンプレートを参考に、テンポ150の明るい8小節のボス戦BGMを作ってください。まずvalidateし、問題を直してからcomposeしてください。
+
+### `compose_mml`の引数
+
+| 引数 | 型 | 使用するaction | デフォルト | 説明 |
 |---|---|---|---|---|
-| `action` | string | yes | — | `compose`, `validate`, `template` のいずれか |
-| `mml` | string | compose/validate時 | `""` | MMLソース文字列 |
-| `mode` | string | compose/validate時 | `""` | `ppmck` または `pyxel` |
-| `template` | string | template時 | `"basic"` | `basic`, `melody`, `chord`, `drum`, `empty` |
-| `sample_rate` | integer | no | `44100` | 出力WAVのサンプリングレート（Hz） |
-| `normalize` | boolean | no | `true` | 出力振幅を正規化するか |
+| `action` | string | すべて | 必須 | `template`、`validate`、`compose` |
+| `mode` | string | すべて | `""` | `ppmck`または`pyxel` |
+| `mml` | string | validate/compose | `""` | 検証・合成するMML |
+| `template` | string | template | `"basic"` | 取得するテンプレート名 |
+| `sample_rate` | integer | compose | `44100` | WAVのサンプリング周波数 |
+| `normalize` | boolean | compose | `true` | 合成後に振幅を正規化するか |
 
-### action=`compose` — WAVを生成
+未知の`mode`をtemplateで指定した場合は`ppmck`、未知のテンプレート名を指定した場合は`basic`へフォールバックします。validate/composeでは`mml`と`mode`が必須です。
 
-```json
-{
-  "action": "compose",
-  "mml": "0: T120 L8 O4 V100 @1\n   C D E F | G A B >C",
-  "mode": "pyxel",
-  "sample_rate": 44100,
-  "normalize": true
-}
-```
-
-#### 戻り値
-
-```json
-{
-  "success": true,
-  "wav_path": "./data/output_20260711_120000_123.wav",
-  "duration_sec": 2.0,
-  "note_sequence": { ... },
-  "validation": {
-    "errors": [],
-    "warnings": []
-  }
-}
-```
-
-- `success` が `false` の場合、`wav_path` は `null` になります。
-- エラーがある場合は `validation.errors` に詳細なエラー情報が入ります。
-- **WAVファイル名は生成時刻ベースの `output_YYYYMMDD_HHMMSS_mmm.wav` 形式で出力されます。** 毎回異なるファイル名になるため、複数回の `compose` 実行でファイルが上書きされることはありません。
-
-### action=`validate` — 構文チェック
-
-```json
-{
-  "action": "validate",
-  "mml": "A t120 l8 o4 v15 q2\n  c d e f",
-  "mode": "ppmck"
-}
-```
-
-#### 戻り値
-
-```json
-{
-  "valid": true,
-  "errors": [],
-  "warnings": [],
-  "note_sequence": { ... },
-  "channel_summary": [
-    {
-      "channel": "Pulse1",
-      "note_count": 4,
-      "octave_range": [4, 5],
-      "duration_ticks": 768
-    }
-  ]
-}
-```
-
-### action=`template` — テンプレート生成
+### テンプレートを取得する
 
 ```json
 {
   "action": "template",
   "mode": "pyxel",
-  "template": "basic"
+  "template": "vibrato_lead"
 }
 ```
 
-#### 戻り値
+| テンプレート | 用途 |
+|---|---|
+| `basic` | メロディ、伴奏、ベース、リズムの基本4ch構成 |
+| `melody` | Pulse1の主旋律を中心にした構成 |
+| `chord` | Pulseのコード伴奏とTriangleベースを中心にした構成 |
+| `drum` | Noiseのビートを中心にした構成 |
+| `empty` | 各チャンネルを休符だけにした最小構成 |
+| `expressive_lead` | 音量・音色エンベロープを使うリード |
+| `vibrato_lead` | ビブラート、ピッチ変化、デチューンを使うリード |
+| `pitch_motion` | アルペジオ、スイープ、グライドを使う効果的な音程変化 |
+
+テンプレートは両モードに用意され、同じ目的を各モード固有のコマンドで表現します。
+
+### MMLを検証する
 
 ```json
 {
-  "mml": "0: T120 L8 O4 V100 @1\n   C D E F | ...",
-  "description": "基本的な4ch構成（メロディ+和音+ベース+リズム）"
+  "action": "validate",
+  "mode": "ppmck",
+  "mml": "A t120 l8 o4 v15 q7 @2\n  c d e f | g a b >c"
 }
 ```
 
-### テンプレート種別
+`valid`、`errors`、`warnings`に加え、解析済みの`note_sequence`とチャンネルごとの`channel_summary`を返します。エラーには行・列、原因、修正ヒントが含まれます。
 
-| テンプレート | 内容 |
-|---|---|
-| `basic` | 基本的な4ch構成（メロディ+和音+ベース+リズム） |
-| `melody` | メロディ重視（Pulse1主旋律、他は伴奏最小限） |
-| `chord` | コード伴奏重視（Pulse2で和音、Triangleでベース） |
-| `drum` | リズム重視（Noise中心のビートパターン） |
-| `empty` | 各チャンネルのヘッダーのみ（空のテンプレート） |
+### WAVを生成する
 
----
-
-## MML形式
-
-### ppmck 形式の例
-
+```json
+{
+  "action": "compose",
+  "mode": "pyxel",
+  "mml": "0: T120 L8 O4 V100 Q90 @1\n   C D E F | G A B >C",
+  "sample_rate": 44100,
+  "normalize": true
+}
 ```
+
+成功時は`success: true`、`wav_path`、`duration_sec`、解析済みの`note_sequence`を返します。ファイル名は`output_YYYYMMDD_HHMMSS_mmm.wav`形式で、指定した出力ディレクトリへ保存されます。
+
+`wav_path`はMCPサーバが動作しているマシン上のローカルパスです。リモートのHTTPサーバとして運用する場合、このツール自体はWAVのダウンロード配信を行いません。
+
+## MMLの書き方
+
+### チャンネル対応
+
+| 音源 | ppmck | pyxel | 特徴 |
+|---|---|---|---|
+| Pulse1 | `A` | `0:` | デューティ比を変更できる矩形波 |
+| Pulse2 | `B` | `1:` | デューティ比を変更できる矩形波 |
+| Triangle | `T` | `2:` | 主にベース向けの三角波 |
+| Noise | `N` | `3:` | ドラムや効果音向けのノイズ |
+| Loop | `L` | — | ppmckのループトラック |
+
+ppmckは音符と基本コマンドに小文字、pyxelは大文字を使います。
+
+### ppmckモード
+
+```mml
 #TITLE "My Song"
 #COMPOSER "LLM"
 
-A t150 l8 o4 v15 q2
-  c d e f | g a b > c
+A t150 l8 o4 v15 q7 @2
+  c d e f | g a b >c
 
-B l8 o3 v12 q1
-  c r g r c r g r
+B l8 o3 v11 @1
+  c r g r | c r g r
 
-T l4 o3 v7
-  c2 c2 g2 g2
+T l4 o2 v7
+  c2 g2 | a2 f2
 
 N l8 v10
-  r c r c r c r c
+  c r c c | c r c r
 ```
 
-### pyxel 形式の例
+主な拡張機能:
 
-```
-0: T150 L8 O4 V100 @1
-   C D E F G A B >C
+- `D`: セント単位のデチューン
+- `s`: Pulseハードウェアスイープ
+- `v+` / `v-`: 相対音量
+- `@v` / `@@`: 音量・デューティエンベロープ
+- `@MP` / `MP` / `MPOF`: LFOの定義・適用・解除
+- `@EP` / `EP` / `EPOF`: ピッチエンベロープ
+- `@EN` / `EN` / `ENOF`: 高速アルペジオ向けノートエンベロープ
+- `^`: タイ、`&`: スラー
+
+### pyxelモード
+
+```mml
+0: T150 L8 O4 V110 Q90 @1
+   C D E F | G A B >C
 
 1: L8 O3 V80 @2
-   E G B R E G B R
+   C R G R | C R G R
 
-2: L4 O3 V60
-   C2 G2 E2 C2
+2: L4 O2 V60
+   C2 G2 | A2 F2
 
 3: L8 V80
-   C R C R C R C R
+   C R C C | C R C R
 ```
 
-### 詳細仕様
+主な拡張機能:
 
-詳細なMMLコマンド仕様、IR構造、エラーコードは [`doc/Design.md`](doc/Design.md) を参照してください。
+- `K`: 半音単位のトランスポーズ
+- `Y`: セント単位のデチューン
+- `@ENV`: 音量エンベロープ
+- `@VIB`: ビブラート
+- `@GLI`: グライド
+- `[...]N`: 回数付きリピート
+- `&`: スラー
 
----
+値域や正確な文法は[MML構文規則](doc/MML_BNF.md)、MCPの入出力は[MCPツール仕様](doc/mcp.md)、内部構造は[設計書](doc/Design.md)を参照してください。
 
-## テスト・開発
+## 現在の制約
 
-### テスト実行
+- DPCM、NSF出力、GUI、Webプレイヤーはありません。
+- 実機や既存ドライバの音を厳密に再現するエミュレーターではありません。
+- Pulse専用コマンドをTriangleやNoiseへ指定すると、エラーまたは警告になります。
+- ppmckの区間リピートなど、設計上予約されていても未実装の構文があります。
+- pyxelの無限リピートは安全のため有限回で打ち切られ、警告が返る場合があります。
+
+## 開発
 
 ```bash
+# 全テスト
 uv run pytest
-```
 
-### リント・フォーマット
-
-```bash
+# lint
 uv run ruff check .
+
+# format
 uv run ruff format .
-```
 
-### 手動でサーバを起動
-
-```bash
+# stdioサーバを手動起動
 uv run mml-composemusic-mcp --output-dir ./data
 ```
 
-または:
-
-```bash
-uv run python -m mml_composemusic_mcp.server --output-dir ./data
-```
-
----
-
-## ディレクトリ構成
-
-```
-.
-├── doc/                          # 設計書・設定例
-│   ├── Design.md                 # 統合設計書
-│   ├── mcp.md                    # MCPツールスキーマ
-│   └── mcp-client-config-example.json  # MCPクライアント設定例
-├── src/mml_composemusic_mcp/     # ソースコード
-│   ├── server.py                 # MCPサーバ
-│   ├── lexer.py                  # MML字句解析
-│   ├── parser_ppmck.py           # ppmckパーサ
-│   ├── parser_pyxel.py           # pyxelパーサ
-│   ├── parser_base.py            # パーサ共通処理
-│   ├── ir.py                     # 中間表現・エラー型
-│   ├── synthesizer.py            # APU風合成・WAV出力
-│   └── templates.py              # テンプレート
-├── tests/                        # テスト
-├── README.md                     # このファイル
-└── pyproject.toml                # プロジェクト設定
-```
-
----
+受理するMML文法を変更する場合は、実装・テストと合わせて`doc/MML_BNF.md`を更新してください。
 
 ## ライセンス
 

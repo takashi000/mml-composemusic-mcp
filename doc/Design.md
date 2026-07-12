@@ -129,7 +129,7 @@ MML文字列
 | `action` | string | yes | — | 動作モード: `"compose"` / `"validate"` / `"template"` |
 | `mml` | string | compose/validate時 | `""` | MML文字列 |
 | `mode` | string | compose/validate時 | `""` | `"ppmck"` / `"pyxel"` |
-| `template` | string | template時 | `"basic"` | テンプレート種別: `"basic"` / `"melody"` / `"chord"` / `"drum"` / `"empty"` |
+| `template` | string | template時 | `"basic"` | テンプレート種別: `"basic"` / `"melody"` / `"chord"` / `"drum"` / `"empty"` / `"expressive_lead"` / `"vibrato_lead"` / `"pitch_motion"` |
 | `sample_rate` | int | no | `44100` | 出力サンプリング周波数（Hz） |
 | `normalize` | bool | no | `true` | 出力振幅の正規化 |
 

@@ -13,7 +13,7 @@ from .parser_pyxel import parse_pyxel
 from .semantic_ppmck import analyze_ppmck
 from .semantic_pyxel import analyze_pyxel
 from .synthesizer import build_channel_summary, synthesize, write_wav
-from .templates import get_template
+from .templates import TEMPLATES, get_template
 
 mcp = FastMCP("mml-composemusic-mcp")
 OUTPUT_DIR = Path("./data")
@@ -88,7 +88,7 @@ def compose_mml(
     if action == "template":
         if mode not in ("ppmck", "pyxel"):
             mode = "ppmck"
-        if template not in ("basic", "melody", "chord", "drum", "empty"):
+        if template not in TEMPLATES[mode]:
             template = "basic"
         mml_text, description = get_template(mode, template)
         return {"mml": mml_text, "description": description}

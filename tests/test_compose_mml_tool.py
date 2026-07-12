@@ -65,7 +65,16 @@ def test_validate_pyxel(compose_mml):
 
 def test_template_all(compose_mml):
     for mode in ("ppmck", "pyxel"):
-        for template in ("basic", "melody", "chord", "drum", "empty"):
+        for template in (
+            "basic",
+            "melody",
+            "chord",
+            "drum",
+            "empty",
+            "expressive_lead",
+            "vibrato_lead",
+            "pitch_motion",
+        ):
             result = compose_mml(action="template", mode=mode, template=template)
             assert "mml" in result
             assert "description" in result
@@ -75,6 +84,18 @@ def test_template_all(compose_mml):
             assert validated["valid"] is True, (
                 f"{mode}/{template} template invalid: {validated['errors']}"
             )
+
+
+def test_synthesis_templates_compose(compose_mml, tmp_output_dir):
+    for mode in ("ppmck", "pyxel"):
+        for template in ("expressive_lead", "vibrato_lead", "pitch_motion"):
+            generated = compose_mml(action="template", mode=mode, template=template)
+            result = compose_mml(action="compose", mml=generated["mml"], mode=mode)
+            assert result["success"] is True, (
+                f"{mode}/{template} synthesis failed: {result['validation']}"
+            )
+            assert result["duration_sec"] > 0
+            assert Path(result["wav_path"]).exists()
 
 
 def test_template_invalid_fallback(compose_mml):

@@ -25,7 +25,7 @@ MML文字列を解析し、以下のいずれかの処理を実行します。
 | `action` | string | yes | - | `compose`, `validate`, `template` のいずれか |
 | `mml` | string | compose/validate時 | `""` | MMLソース文字列 |
 | `mode` | string | compose/validate時 | `""` | `ppmck` または `pyxel` |
-| `template` | string | template時 | `"basic"` | `basic`, `melody`, `chord`, `drum`, `empty` |
+| `template` | string | template時 | `"basic"` | `basic`, `melody`, `chord`, `drum`, `empty`, `expressive_lead`, `vibrato_lead`, `pitch_motion` |
 | `sample_rate` | integer | no | `44100` | 出力WAVのサンプリングレート（Hz） |
 | `normalize` | boolean | no | `true` | 出力振幅を正規化するか |
 

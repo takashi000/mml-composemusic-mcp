@@ -5,17 +5,28 @@ import pytest
 from mml_composemusic_mcp.server import compose_mml
 from mml_composemusic_mcp.templates import DESCRIPTIONS, TEMPLATES, get_template
 
+TEMPLATE_NAMES = (
+    "basic",
+    "melody",
+    "chord",
+    "drum",
+    "empty",
+    "expressive_lead",
+    "vibrato_lead",
+    "pitch_motion",
+)
+
 
 def test_all_templates_exist():
     for mode in ("ppmck", "pyxel"):
-        for name in ("basic", "melody", "chord", "drum", "empty"):
+        for name in TEMPLATE_NAMES:
             assert mode in TEMPLATES
             assert name in TEMPLATES[mode]
             assert TEMPLATES[mode][name]
 
 
 def test_all_descriptions_exist():
-    for name in ("basic", "melody", "chord", "drum", "empty"):
+    for name in TEMPLATE_NAMES:
         assert name in DESCRIPTIONS
         assert DESCRIPTIONS[name]
 
@@ -51,7 +62,7 @@ def test_get_template_empty():
 
 
 @pytest.mark.parametrize("mode", ["ppmck", "pyxel"])
-@pytest.mark.parametrize("template", ["basic", "melody", "chord", "drum", "empty"])
+@pytest.mark.parametrize("template", TEMPLATE_NAMES)
 def test_template_validates(mode, template):
     mml, _ = get_template(mode, template)
     result = compose_mml(action="validate", mml=mml, mode=mode)
@@ -81,3 +92,37 @@ def test_template_invalid_name_falls_back():
     result = compose_mml(action="template", mode="ppmck", template="nonexistent")
     assert result["mml"]
     assert result["description"]
+
+
+@pytest.mark.parametrize(
+    ("mode", "template", "event_types"),
+    [
+        ("ppmck", "expressive_lead", {"vol_envelope", "duty_envelope", "rel_volume"}),
+        ("pyxel", "expressive_lead", {"envelope"}),
+        ("ppmck", "vibrato_lead", {"lfo", "pitch_envelope", "detune"}),
+        ("pyxel", "vibrato_lead", {"vibrato"}),
+        ("ppmck", "pitch_motion", {"note_envelope", "sweep"}),
+        ("pyxel", "pitch_motion", {"glide"}),
+    ],
+)
+def test_synthesis_templates_contain_expected_events(mode, template, event_types):
+    mml, _ = get_template(mode, template)
+    result = compose_mml(action="validate", mml=mml, mode=mode)
+    actual_types = {
+        event["type"]
+        for channel in result["note_sequence"]["channels"].values()
+        for event in channel["events"]
+    }
+    assert event_types <= actual_types
+
+
+def test_pyxel_vibrato_template_applies_detune_to_notes():
+    mml, _ = get_template("pyxel", "vibrato_lead")
+    result = compose_mml(action="validate", mml=mml, mode="pyxel")
+    notes = [
+        event
+        for channel in result["note_sequence"]["channels"].values()
+        for event in channel["events"]
+        if event["type"] == "note"
+    ]
+    assert any(note["detune_cents"] != 0 for note in notes)
