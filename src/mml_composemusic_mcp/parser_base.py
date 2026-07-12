@@ -68,6 +68,19 @@ class ParserContext:
             context=context,
         )
 
+    def add_missing_number_error(
+        self, token: Token, command: str, context: str = ""
+    ) -> None:
+        self.add_error(
+            code=ErrorCode.SYNTAX_INVALID_NUMBER,
+            line=token.line,
+            column=token.column,
+            message=f"'{command}' の後に数値が必要です。",
+            severity="error",
+            hint=f"例: {command}4 のように数値を続けてください。",
+            context=context,
+        )
+
 
 class ParserError(Exception):
     """Raised by parsers to abort a single statement and recover."""

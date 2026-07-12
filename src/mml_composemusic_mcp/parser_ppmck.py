@@ -28,12 +28,25 @@ CHANNEL_MAP = {
     "N": "Noise",
 }
 
+HEADER_KEYS = {
+    "#TITLE",
+    "#COMPOSER",
+    "#PROGRAMER",
+    "#OCTAVE-REV",
+    "#INCLUDE",
+    "#EX-DISKFM",
+    "#EX-NAMCO106",
+    "#BANK-CHANGE",
+    "#EFFECT-INCLUDE",
+}
+
 
 class PpmckParser:
     def __init__(self, source: str, tokens: list[Token]) -> None:
         self.source = source
         self.ctx = ParserContext(tokens)
         self.tracks_seen: set[str] = set()
+        self.track_ids_seen: set[str] = set()
 
     def parse(self) -> tuple[Program, list[ErrorDetail]]:
         program = Program(line=1, column=1, tracks=[])
@@ -42,6 +55,16 @@ class PpmckParser:
         while self.ctx.peek().type != TokenType.EOF:
             token = self.ctx.peek()
             if token.type == TokenType.HEADER:
+                if program.tracks:
+                    self.ctx.add_error(
+                        code=ErrorCode.SYNTAX_UNEXPECTED_TOKEN,
+                        line=token.line,
+                        column=token.column,
+                        message="ヘッダーはトラック定義より前に記述してください。",
+                        severity="error",
+                        hint="すべての # ヘッダーを最初のトラックより前へ移動してください。",
+                        context=context_line(self.source, token),
+                    )
                 headers.append(self._parse_header())
                 continue
             if token.type == TokenType.COMMENT:
@@ -76,6 +99,16 @@ class PpmckParser:
         key = parts[0] if parts else raw
         value = ""
         unterminated = False
+        if key.upper() not in HEADER_KEYS:
+            self.ctx.add_error(
+                code=ErrorCode.SYNTAX_UNEXPECTED_TOKEN,
+                line=token.line,
+                column=token.column,
+                message=f"未知のヘッダー '{key}' です。",
+                severity="error",
+                hint="MML_BNF.md に定義されたヘッダーを使用してください。",
+                context=context_line(self.source, token),
+            )
         if len(parts) > 1:
             rest = parts[1]
             if rest.startswith('"'):
@@ -95,6 +128,15 @@ class PpmckParser:
                     value = rest[1:-1]
             else:
                 value = rest
+                self.ctx.add_error(
+                    code=ErrorCode.SYNTAX_UNEXPECTED_TOKEN,
+                    line=token.line,
+                    column=token.column,
+                    message=f"ヘッダー '{key}' の値は二重引用符で囲んでください。",
+                    severity="error",
+                    hint=f'#TITLE "{value}" のように記述してください。',
+                    context=context_line(self.source, token),
+                )
         return Header(
             line=token.line,
             column=token.column,
@@ -106,6 +148,17 @@ class PpmckParser:
     def _parse_track(self) -> Track | None:
         token = self.ctx.advance()
         ch = token.value.upper()
+        if ch in self.track_ids_seen:
+            self.ctx.add_error(
+                code=ErrorCode.SYNTAX_DUPLICATE_TRACK,
+                line=token.line,
+                column=token.column,
+                message=f"トラック '{ch}' が複数回定義されています。",
+                severity="error",
+                hint="各トラックは1回のみ定義できます。重複定義を削除してください。",
+                context=context_line(self.source, token),
+            )
+        self.track_ids_seen.add(ch)
         if ch == "L":
             return Track(
                 line=token.line,
@@ -127,16 +180,6 @@ class PpmckParser:
             )
             return None
         channel = CHANNEL_MAP[ch]
-        if channel in self.tracks_seen:
-            self.ctx.add_error(
-                code=ErrorCode.SYNTAX_DUPLICATE_TRACK,
-                line=token.line,
-                column=token.column,
-                message=f"トラック '{ch}' が複数回定義されています。",
-                severity="error",
-                hint="各トラックは1回のみ定義できます。重複定義を削除してください。",
-                context=context_line(self.source, token),
-            )
         self.tracks_seen.add(channel)
         track = Track(
             line=token.line,
@@ -215,15 +258,12 @@ class PpmckParser:
 
     def _parse_note(self) -> NoteStmt:
         token = self.ctx.advance()
-        length, dots = self._read_length(token)
         accidental = 0
-        while True:
-            if self.ctx.match(TokenType.SHARP):
-                accidental += 1
-            elif self.ctx.match(TokenType.FLAT):
-                accidental -= 1
-            else:
-                break
+        if self.ctx.match(TokenType.SHARP):
+            accidental = 1
+        elif self.ctx.match(TokenType.FLAT):
+            accidental = -1
+        length, dots = self._read_length(token)
         return NoteStmt(
             line=token.line,
             column=token.column,
@@ -245,6 +285,7 @@ class PpmckParser:
 
     def _parse_octave(self) -> OctaveStmt:
         token = self.ctx.advance()
+        self._require_value(token, "o")
         value = int(token.value) if token.value else 4
         return OctaveStmt(
             line=token.line,
@@ -273,6 +314,7 @@ class PpmckParser:
 
     def _parse_length(self) -> LengthStmt:
         token = self.ctx.advance()
+        self._require_value(token, "l")
         value = int(token.value) if token.value else 4
         return LengthStmt(
             line=token.line,
@@ -282,6 +324,7 @@ class PpmckParser:
 
     def _parse_volume(self) -> VolumeStmt:
         token = self.ctx.advance()
+        self._require_value(token, "v")
         value = int(token.value) if token.value else 0
         return VolumeStmt(
             line=token.line,
@@ -291,6 +334,7 @@ class PpmckParser:
 
     def _parse_duty(self) -> DutyStmt:
         token = self.ctx.advance()
+        self._require_value(token, "q")
         value = int(token.value) if token.value else 0
         return DutyStmt(
             line=token.line,
@@ -300,12 +344,19 @@ class PpmckParser:
 
     def _parse_tempo(self) -> TempoStmt:
         token = self.ctx.advance()
+        self._require_value(token, "t")
         value = int(token.value) if token.value else 120
         return TempoStmt(
             line=token.line,
             column=token.column,
             value=value,
         )
+
+    def _require_value(self, token: Token, command: str) -> None:
+        if not token.value:
+            self.ctx.add_missing_number_error(
+                token, command, context_line(self.source, token)
+            )
 
     def _parse_tie(self) -> TieStmt:
         token = self.ctx.advance()
@@ -373,8 +424,6 @@ class PpmckParser:
         )
 
 
-def parse_ppmck(
-    source: str, tokens: list[Token]
-) -> tuple[Program, list[ErrorDetail]]:
+def parse_ppmck(source: str, tokens: list[Token]) -> tuple[Program, list[ErrorDetail]]:
     parser = PpmckParser(source, tokens)
     return parser.parse()

@@ -163,15 +163,12 @@ class PyxelParser:
 
     def _parse_note(self) -> NoteStmt:
         token = self.ctx.advance()
-        length, dots = self._read_length(token)
         accidental = 0
-        while True:
-            if self.ctx.match(TokenType.SHARP):
-                accidental += 1
-            elif self.ctx.match(TokenType.FLAT):
-                accidental -= 1
-            else:
-                break
+        if self.ctx.match(TokenType.SHARP):
+            accidental = 1
+        elif self.ctx.match(TokenType.FLAT):
+            accidental = -1
+        length, dots = self._read_length(token)
         return NoteStmt(
             line=token.line,
             column=token.column,
@@ -193,6 +190,7 @@ class PyxelParser:
 
     def _parse_octave(self) -> OctaveStmt:
         token = self.ctx.advance()
+        self._require_value(token, "O")
         value = int(token.value) if token.value else 4
         return OctaveStmt(
             line=token.line,
@@ -221,6 +219,7 @@ class PyxelParser:
 
     def _parse_length(self) -> LengthStmt:
         token = self.ctx.advance()
+        self._require_value(token, "L")
         value = int(token.value) if token.value else 4
         return LengthStmt(
             line=token.line,
@@ -230,7 +229,8 @@ class PyxelParser:
 
     def _parse_volume(self) -> VolumeStmt:
         token = self.ctx.advance()
-        value = int(token.value) if token.value else 0
+        self._require_value(token, "V")
+        value = int(token.value) if token.value not in ("", "+", "-") else 0
         return VolumeStmt(
             line=token.line,
             column=token.column,
@@ -239,6 +239,7 @@ class PyxelParser:
 
     def _parse_gate_time(self) -> GateTimeStmt:
         token = self.ctx.advance()
+        self._require_value(token, "Q")
         value = int(token.value) if token.value else 80
         return GateTimeStmt(
             line=token.line,
@@ -248,7 +249,8 @@ class PyxelParser:
 
     def _parse_at(self) -> DutyStmt:
         token = self.ctx.advance()
-        value = int(token.value) if token.value else 0
+        self._require_value(token, "@")
+        value = int(token.value) if token.value not in ("", "+", "-") else 0
         return DutyStmt(
             line=token.line,
             column=token.column,
@@ -257,6 +259,7 @@ class PyxelParser:
 
     def _parse_tempo(self) -> TempoStmt:
         token = self.ctx.advance()
+        self._require_value(token, "T")
         value = int(token.value) if token.value else 120
         return TempoStmt(
             line=token.line,
@@ -266,7 +269,8 @@ class PyxelParser:
 
     def _parse_transpose(self) -> TransposeStmt:
         token = self.ctx.advance()
-        value = int(token.value) if token.value else 0
+        self._require_value(token, "K", signed=True)
+        value = int(token.value) if token.value not in ("", "+", "-") else 0
         return TransposeStmt(
             line=token.line,
             column=token.column,
@@ -275,12 +279,22 @@ class PyxelParser:
 
     def _parse_detune(self) -> DetuneStmt:
         token = self.ctx.advance()
-        value = int(token.value) if token.value else 0
+        self._require_value(token, "Y", signed=True)
+        value = int(token.value) if token.value not in ("", "+", "-") else 0
         return DetuneStmt(
             line=token.line,
             column=token.column,
             value=value,
         )
+
+    def _require_value(
+        self, token: Token, command: str, *, signed: bool = False
+    ) -> None:
+        invalid = not token.value or (signed and token.value in ("+", "-"))
+        if invalid:
+            self.ctx.add_missing_number_error(
+                token, command, context_line(self.source, token)
+            )
 
     def _parse_tie(self) -> TieStmt:
         token = self.ctx.advance()
@@ -369,8 +383,6 @@ class PyxelParser:
         )
 
 
-def parse_pyxel(
-    source: str, tokens: list[Token]
-) -> tuple[Program, list[ErrorDetail]]:
+def parse_pyxel(source: str, tokens: list[Token]) -> tuple[Program, list[ErrorDetail]]:
     parser = PyxelParser(source, tokens)
     return parser.parse()

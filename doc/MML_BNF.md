@@ -60,7 +60,6 @@
 
 <ppmck_track>     ::= <track_header> <ppmck_statement>*
 <track_header>    ::= "A" | "B" | "T" | "N" | "L"
-                    | /* 第2段階: 複合ヘッダー "ACE" 等 */
 ```
 
 ### 2.2 ステートメント
@@ -97,7 +96,9 @@
 <comment>         ::= ";" <string_to_eol>
 ```
 
-### 2.3 第2段階予定コマンド（未実装、BNF に含める）
+### 2.3 将来予定コマンド（現在の受理文法には含めない）
+
+以下は設計予約であり、現在は構文エラーになる。実装時に受理文法へ移す。
 
 ```bnf
 <ppmck_stage2>    ::= <count_length>
@@ -172,8 +173,9 @@
 <gate_cmd>        ::= "Q" <number>          /* Q0 〜 Q100 */
 <tone_cmd>        ::= "@" <number>          /* @0 〜 @3, Pulse系のみ有効 */
 <tempo_cmd>       ::= "T" <number>          /* T1 〜 */
-<transpose_cmd>   ::= "K" <number>          /* 半音単位 */
-<detune_cmd>      ::= "Y" <number>          /* セント単位 */
+<signed_number>   ::= ("+" | "-")? <number>
+<transpose_cmd>   ::= "K" <signed_number>   /* 半音単位 */
+<detune_cmd>      ::= "Y" <signed_number>   /* セント単位 */
 
 <tie_cmd>         ::= <tie> (<note> | <rest> | <number>)
 ```
@@ -184,16 +186,13 @@
 <ext_cmd>         ::= <env_cmd> | <vib_cmd> | <gli_cmd>
 
 <env_cmd>         ::= "@ENV" <number> <env_def>?
-<env_def>         ::= "{" <number> "," <number> ("," <number>)* "}"
-                    | <number>+
+<env_def>         ::= <number>+
 
 <vib_cmd>         ::= "@VIB" <number> <vib_def>?
-<vib_def>         ::= "{" <number> "," <number> "," <number> "}"
-                    | <number>+
+<vib_def>         ::= <number>+
 
 <gli_cmd>         ::= "@GLI" <number> <gli_def>?
-<gli_def>         ::= "{" <number> "," <number> "}"
-                    | <number>+
+<gli_def>         ::= <number>+
 ```
 
 ---
@@ -228,5 +227,7 @@
 ## 6. 備考
 
 - 本 BNF は `mml-composemusic-mcp` の**サポート範囲**を定義するものであり、オリジナルの PPMCK や Pyxel の全機能を網羅するものではない。
-- 第2段階予定コマンドは BNF に含めるが、第1段階実装では `SEMANTIC_UNSUPPORTED_FEATURE` として警告を返す。
+- 第2段階予定コマンドは設計予約として記載するが、現在の受理文法には含めない。
+- `@ENV` / `@VIB` / `@GLI` は構文解析してIRへ保持し、合成未対応を `SEMANTIC_UNSUPPORTED_FEATURE` で警告する。
+- コマンド文字は ppmck では小文字、pyxel では大文字を使用する。音符・休符も同じ規則に従う。
 - 詳細な実装アーキテクチャは [Design.md](Design.md) を参照。

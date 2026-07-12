@@ -83,11 +83,22 @@ class Lexer:
             start += self._advance()
         return start
 
+    def _read_signed_number(self) -> str:
+        sign = ""
+        if self._peek() in "+-":
+            sign = self._advance()
+        number = self._read_number()
+        return sign + number if number else sign
+
     def _read_until_newline(self) -> str:
         start = ""
         while self.pos < len(self.source) and self.source[self.pos] not in "\r\n":
             start += self._advance()
         return start
+
+    def _at_line_start(self) -> bool:
+        line_start = self.source.rfind("\n", 0, self.pos) + 1
+        return not self.source[line_start : self.pos].strip()
 
     def _emit(self, ttype: TokenType, value: str, raw: str = "") -> None:
         self.tokens.append(
@@ -116,8 +127,13 @@ class Lexer:
             self._emit(TokenType.COMMENT, raw, raw)
             return
         if ch == "#":
-            raw = "#" + self._read_until_newline()
-            self._emit(TokenType.HEADER, raw, raw)
+            if self._at_line_start():
+                self._advance()
+                raw = "#" + self._read_until_newline()
+                self._emit(TokenType.HEADER, raw, raw)
+            else:
+                self._advance()
+                self._emit(TokenType.SHARP, "#", "#")
             return
         if ch == "|":
             self._advance()
@@ -151,6 +167,10 @@ class Lexer:
         if ch == "+":
             self._advance()
             self._emit(TokenType.SHARP, "+", "+")
+            return
+        if ch == "#":
+            self._advance()
+            self._emit(TokenType.SHARP, "#", "#")
             return
         if ch == "-":
             self._advance()
@@ -232,6 +252,10 @@ class Lexer:
             self._advance()
             self._emit(TokenType.SHARP, "+", "+")
             return
+        if ch == "#":
+            self._advance()
+            self._emit(TokenType.SHARP, "#", "#")
+            return
         if ch == "-":
             self._advance()
             self._emit(TokenType.FLAT, "-", "-")
@@ -259,7 +283,7 @@ class Lexer:
         if ch.isalpha():
             cmd = self._advance()
             if cmd in "OLVTQKY":
-                num = self._read_number()
+                num = self._read_signed_number() if cmd in "KY" else self._read_number()
                 raw = cmd + num
                 if cmd == "O":
                     self._emit(TokenType.OCTAVE, num, raw)
