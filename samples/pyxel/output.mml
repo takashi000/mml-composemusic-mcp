@@ -1,0 +1,79 @@
+0: T108 L8 O5 V100 @1
+  A B C B A G+ A2
+  E A G F E2 R
+  C4 R4
+  A B C B A G+ A2
+  C B A G F E D C
+  R2 R2
+  A B C B A G+ A2
+  E4 R4
+  E A G F E2 R
+  A B >C <B A G F E
+  R2 R2
+  C4 R4
+  A B C B A G+ A2
+  E A G F E2 R
+  C B A G F E D C
+  R2 R2
+  A B C B A G+ A2
+  E A G F E2 R
+  C B A G F E D C
+  E F E F E F E F
+  A B A B A B A B
+  A4 R4
+
+1: L8 O4 V80 @2
+  R2 R2
+  A B C B A G+ A2
+  E A G F E2 R
+  E4 R4
+  C D E F G A B >C
+  A B C B A G+ A2
+  E4 R4
+  E A G F E2 R
+  C4 R4
+  E D C B A G F E
+  O5 A B C B A G+ A2 O4
+  E A G F E2 R
+  E4 R4
+  C4 R4
+  C D E F G A B >C
+  A B C B A G+ A2
+  E A G F E2 R
+  C4 R4
+  C D E F G A B >C
+  A2 E2 A2 E2
+  A2 E2 A2 E2
+  A4 R4
+
+2: L2 O3 V60
+  A E A E A E A E
+  A E A E A E A E
+  F C G E A E A E
+  D E A E A E A E
+  A E A E A E A E
+  A E A E
+
+3: L8 V50
+  C R R R C R R R
+  C R R R C R R R
+  C R R R C R R R
+  C R R R C R R R
+  C R C R C R C R
+  C R R R C R R R
+  C R R R C R R R
+  C R R R C R R R
+  C R R R C R R R
+  C R C R C R C R
+  C R R R C R R R
+  C R R R C R R R
+  C R R R C R R R
+  C R R R C R R R
+  C R C R C R C R
+  C R R R C R R R
+  C R R R C R R R
+  C R R R C R R R
+  C R C R C R C R
+  C R R R C R R R
+  C R R R C R R R
+  C R R R R R R R

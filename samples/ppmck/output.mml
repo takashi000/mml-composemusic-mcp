@@ -1,0 +1,86 @@
+#TITLE "Invention in A minor No.4"
+#COMPOSER "Luno"
+
+; Subject: A-B-C-B-A-G#-A (stepwise neighbor tones)
+; Counter-subject: E-A-G-F-E (4th leap! contrasting with subject)
+; G# = g+ (not gs, which conflicts with sweep command s)
+
+A t108 l8 o5 v13 @2
+  a b c b a g+ a2
+  e a g f e2 r
+  c4 r4
+  a b c b a g+ a2
+  c b a g f e d c
+  r2 r2
+  a b c b a g+ a2
+  e4 r4
+  e a g f e2 r
+  a b >c <b a g f e
+  r2 r2
+  c4 r4
+  a b c b a g+ a2
+  e a g f e2 r
+  c b a g f e d c
+  r2 r2
+  a b c b a g+ a2
+  e a g f e2 r
+  c b a g f e d c
+  e f e f e f e f
+  a b a b a b a b
+  a4 r4
+
+B t108 l8 o4 v10 @1
+  r2 r2
+  a b c b a g+ a2
+  e a g f e2 r
+  e4 r4
+  c d e f g a b >c
+  a b c b a g+ a2
+  e4 r4
+  e a g f e2 r
+  c4 r4
+  e d c b a g f e
+  o5 a b c b a g+ a2 o4
+  e a g f e2 r
+  e4 r4
+  c4 r4
+  c d e f g a b >c
+  a b c b a g+ a2
+  e a g f e2 r
+  c4 r4
+  c d e f g a b >c
+  a2 e2 a2 e2
+  a2 e2 a2 e2
+  a4 r4
+
+T l2 o3 v7
+  a e a e a e a e
+  a e a e a e a e
+  f c g e a e a e
+  d e a e a e a e
+  a e a e a e a e
+  a e a e
+
+N l8 v6
+  c r r r c r r r
+  c r r r c r r r
+  c r r r c r r r
+  c r r r c r r r
+  c r c r c r c r
+  c r r r c r r r
+  c r r r c r r r
+  c r r r c r r r
+  c r r r c r r r
+  c r c r c r c r
+  c r r r c r r r
+  c r r r c r r r
+  c r r r c r r r
+  c r r r c r r r
+  c r c r c r c r
+  c r r r c r r r
+  c r r r c r r r
+  c r r r c r r r
+  c r c r c r c r
+  c r r r c r r r
+  c r r r c r r r
+  c r r r r r r r

@@ -1,7 +1,7 @@
 # MCP server exposing compose_mml tool.
 
 import argparse
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from fastmcp import FastMCP
@@ -23,17 +23,24 @@ def _is_error(errors: list[ErrorDetail]) -> bool:
     return any(e.severity == "error" for e in errors)
 
 
-def _generate_wav_filename() -> str:
-    """Generate a unique WAV filename based on the current timestamp.
+def _create_output_directory() -> Path:
+    """Create and return a unique timestamped output directory.
 
-    Format: output_YYYYMMDD_HHMMSS_mmm.wav
-    Milliseconds are included to reduce the chance of collisions when
-    multiple compose requests are issued in rapid succession.
+    Format: YYYYMMDD_HHMMSS_mmm
+    If the millisecond is already in use, advance the timestamp until a free
+    directory can be created. Exclusive creation also handles concurrent calls.
     """
     now = datetime.now()
-    # %f gives microseconds (6 digits); keep the first 3 for milliseconds.
-    timestamp = now.strftime("%Y%m%d_%H%M%S_") + now.strftime("%f")[:3]
-    return f"output_{timestamp}.wav"
+    for offset_ms in range(1000):
+        candidate_time = now + timedelta(milliseconds=offset_ms)
+        timestamp = candidate_time.strftime("%Y%m%d_%H%M%S_%f")[:-3]
+        output_dir = OUTPUT_DIR / timestamp
+        try:
+            output_dir.mkdir(parents=True, exist_ok=False)
+            return output_dir
+        except FileExistsError:
+            continue
+    raise RuntimeError("一意な出力ディレクトリを作成できませんでした。")
 
 
 def _split_errors(errors: list[ErrorDetail]) -> tuple[list[dict], list[dict]]:
@@ -173,9 +180,25 @@ def compose_mml(
                     "note_sequence": note_sequence_dict,
                     "validation": {"errors": errors_list, "warnings": warnings_list},
                 }
-            wav_path = OUTPUT_DIR / _generate_wav_filename()
+            output_dir = _create_output_directory()
+            wav_path = output_dir / "output.wav"
             wav_errors = write_wav(wav_path, wave_data, sample_rate)
             errors.extend(wav_errors)
+            if not _is_error(errors):
+                try:
+                    (output_dir / "output.mml").write_text(mml, encoding="utf-8")
+                except Exception as exc:
+                    errors.append(
+                        ErrorDetail(
+                            code=ErrorCode.RUNTIME_MML_WRITE_FAILED,
+                            phase=ErrorPhase.RUNTIME,
+                            line=0,
+                            column=0,
+                            message=f"MMLファイルの出力に失敗しました: {exc}",
+                            severity="error",
+                            hint="出力先を確認してください。",
+                        )
+                    )
             errors_list, warnings_list = _split_errors(errors)
             return {
                 "success": not _is_error(errors),

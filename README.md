@@ -17,6 +17,17 @@ Pulse 2ch、Triangle 1ch、Noise 1chの構成を持つ簡易2A03 APU風シンセ
 - LLMがコピーして改変できる8種類の作例テンプレートを収録
 - stdio、HTTP、SSE、Streamable HTTPトランスポートに対応
 
+## サンプルデータ
+
+実際にLLMを使用してこのMCPツールで作曲させてみたサンプルデータです。
+ppmck版
+- [音声](samples/ppmck/output.wav)
+- [mml](samples/ppmck/output.mml)
+
+pyxel版
+- [音声](samples/pyxel/output.wav)
+- [mml](samples/pyxel/output.mml)
+
 ## 必要環境
 
 - Python 3.14以上
@@ -147,7 +158,7 @@ MCPクライアントでは、たとえば次のように依頼できます。
 }
 ```
 
-成功時は`success: true`、`wav_path`、`duration_sec`、解析済みの`note_sequence`を返します。ファイル名は`output_YYYYMMDD_HHMMSS_mmm.wav`形式で、指定した出力ディレクトリへ保存されます。
+成功時は`success: true`、`wav_path`、`duration_sec`、解析済みの`note_sequence`を返します。指定した出力ディレクトリの下に生成時刻を表す`YYYYMMDD_HHMMSS_mmm`ディレクトリを作り、`output.wav`と、合成に使用したMML原文の`output.mml`を保存します。
 
 `wav_path`はMCPサーバが動作しているマシン上のローカルパスです。リモートのHTTPサーバとして運用する場合、このツール自体はWAVのダウンロード配信を行いません。
 

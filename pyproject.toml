@@ -1,6 +1,6 @@
 [project]
 name = "mml-composemusic-mcp"
-version = "0.2.0"
+version = "0.2.1"
 description = "MCP server for LLM-driven retro chiptune-style MML composition"
 readme = "README.md"
 requires-python = ">=3.14"

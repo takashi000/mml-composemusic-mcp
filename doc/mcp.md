@@ -36,7 +36,7 @@ MML文字列を解析し、以下のいずれかの処理を実行します。
 ```json
 {
   "success": true,
-  "wav_path": "./data/output.wav",
+  "wav_path": "./data/20260711_120000_123/output.wav",
   "duration_sec": 2.0,
   "note_sequence": { ... },
   "validation": {

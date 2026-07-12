@@ -50,6 +50,7 @@ class ErrorCode(Enum):
     # --- Runtime errors (Synthesizer phase) ---
     RUNTIME_SYNTHESIS_FAILED = "RUNTIME_SYNTHESIS_FAILED"
     RUNTIME_WAV_WRITE_FAILED = "RUNTIME_WAV_WRITE_FAILED"
+    RUNTIME_MML_WRITE_FAILED = "RUNTIME_MML_WRITE_FAILED"
     RUNTIME_INTERNAL_ERROR = "RUNTIME_INTERNAL_ERROR"
 
     # --- API-level errors (parameter validation, not MML syntax) ---

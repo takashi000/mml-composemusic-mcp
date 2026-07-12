@@ -174,8 +174,8 @@ def test_compose_normalize(compose_mml, tmp_output_dir):
     assert Path(off["wav_path"]).exists()
 
 
-def test_compose_unique_filename(compose_mml, tmp_output_dir):
-    """Each compose call should produce a distinct WAV filename."""
+def test_compose_creates_timestamped_output_directory(compose_mml, tmp_output_dir):
+    """Compose writes the WAV and source MML in a timestamped directory."""
     mml = """A t120 l4 o4 v15 q2
   c4
 """
@@ -188,20 +188,23 @@ def test_compose_unique_filename(compose_mml, tmp_output_dir):
     path2 = result2["wav_path"]
     assert path1 is not None
     assert path2 is not None
-    assert path1 != path2, "Two compose calls produced the same wav_path"
+    assert path1 != path2, "Two compose calls produced the same output directory"
 
     p1 = Path(path1)
     p2 = Path(path2)
     assert p1.exists()
     assert p2.exists()
-    assert p1.name.startswith("output_")
-    assert p1.name.endswith(".wav")
-    assert p2.name.startswith("output_")
-    assert p2.name.endswith(".wav")
+    assert p1.name == "output.wav"
+    assert p2.name == "output.wav"
+    assert p1.parent != p2.parent
+    assert p1.parent.parent == tmp_output_dir
+    assert p2.parent.parent == tmp_output_dir
+    assert (p1.parent / "output.mml").read_text(encoding="utf-8") == mml
+    assert (p2.parent / "output.mml").read_text(encoding="utf-8") == mml
 
-    # Ensure the filename follows the expected timestamp pattern.
+    # Ensure the directory follows the expected timestamp pattern.
     import re
 
-    pattern = re.compile(r"^output_\d{8}_\d{6}_\d{3}\.wav$")
-    assert pattern.match(p1.name)
-    assert pattern.match(p2.name)
+    pattern = re.compile(r"^\d{8}_\d{6}_\d{3}$")
+    assert pattern.match(p1.parent.name)
+    assert pattern.match(p2.parent.name)
