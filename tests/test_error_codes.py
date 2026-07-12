@@ -192,7 +192,7 @@ def test_semantic_note_out_of_range_pyxel(compose_mml):
 
 # --- SEMANTIC_CHANNEL_MISMATCH ---
 def test_semantic_channel_mismatch_ppmck_triangle_duty(compose_mml):
-    result = compose_mml(action="validate", mml="T t120 l4 q2\n  c", mode="ppmck")
+    result = compose_mml(action="validate", mml="T t120 l4 @2\n  c", mode="ppmck")
     assert _find_code(result, ErrorCode.SEMANTIC_CHANNEL_MISMATCH.value, "warnings")
 
 

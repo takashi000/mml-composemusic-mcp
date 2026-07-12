@@ -5,23 +5,40 @@ from dataclasses import dataclass, field
 from .ast_nodes import (
     ASTNode,
     BarStmt,
+    DetuneCmdStmt,
     DetuneStmt,
+    DutyEnvelopeDefStmt,
+    DutyEnvelopeUseStmt,
     DutyStmt,
-    EnvelopeDefStmt,
     ExtCmdStmt,
     GateTimeStmt,
     LengthStmt,
+    LfoDefStmt,
+    LfoOffStmt,
+    LfoUseStmt,
+    NoteEnvDefStmt,
+    NoteEnvOffStmt,
+    NoteEnvUseStmt,
     NoteStmt,
     OctaveStmt,
+    PitchEnvDefStmt,
+    PitchEnvOffStmt,
+    PitchEnvUseStmt,
     Program,
+    QuantizeStmt,
+    RelativeVolumeStmt,
     RepeatEndStmt,
     RepeatStartStmt,
     RestStmt,
     Statement,
+    SweepStmt,
     TempoStmt,
+    TieCmdStmt,
     TieStmt,
     Track,
     TransposeStmt,
+    VolumeEnvelopeDefStmt,
+    VolumeEnvelopeUseStmt,
     VolumeStmt,
 )
 from .ir import (
@@ -134,8 +151,16 @@ class SemanticAnalyzer:
             self._analyze_transpose(stmt)
         elif isinstance(stmt, DetuneStmt):
             self._analyze_detune(stmt)
+        elif isinstance(stmt, QuantizeStmt):
+            self._analyze_quantize(stmt)
         elif isinstance(stmt, TieStmt):
             self._analyze_tie(stmt)
+        elif isinstance(stmt, TieCmdStmt):
+            self._analyze_tie_cmd(stmt)
+        elif isinstance(stmt, DetuneCmdStmt):
+            self._analyze_detune_cmd(stmt)
+        elif isinstance(stmt, RelativeVolumeStmt):
+            self._analyze_relative_volume(stmt)
         elif isinstance(stmt, RepeatStartStmt):
             self._analyze_repeat_start(stmt)
         elif isinstance(stmt, RepeatEndStmt):
@@ -144,8 +169,34 @@ class SemanticAnalyzer:
             pass
         elif isinstance(stmt, ExtCmdStmt):
             self._analyze_ext_cmd(stmt)
-        elif isinstance(stmt, EnvelopeDefStmt):
-            self._analyze_stage2(stmt)
+        elif isinstance(stmt, VolumeEnvelopeUseStmt):
+            self._analyze_vol_env_use(stmt)
+        elif isinstance(stmt, VolumeEnvelopeDefStmt):
+            self._analyze_vol_env_def(stmt)
+        elif isinstance(stmt, DutyEnvelopeDefStmt):
+            self._analyze_duty_env_def(stmt)
+        elif isinstance(stmt, DutyEnvelopeUseStmt):
+            self._analyze_duty_env_use(stmt)
+        elif isinstance(stmt, LfoDefStmt):
+            self._analyze_lfo_def(stmt)
+        elif isinstance(stmt, LfoUseStmt):
+            self._analyze_lfo_use(stmt)
+        elif isinstance(stmt, LfoOffStmt):
+            self._analyze_lfo_off(stmt)
+        elif isinstance(stmt, PitchEnvDefStmt):
+            self._analyze_pitch_env_def(stmt)
+        elif isinstance(stmt, PitchEnvUseStmt):
+            self._analyze_pitch_env_use(stmt)
+        elif isinstance(stmt, PitchEnvOffStmt):
+            self._analyze_pitch_env_off(stmt)
+        elif isinstance(stmt, NoteEnvDefStmt):
+            self._analyze_note_env_def(stmt)
+        elif isinstance(stmt, NoteEnvUseStmt):
+            self._analyze_note_env_use(stmt)
+        elif isinstance(stmt, NoteEnvOffStmt):
+            self._analyze_note_env_off(stmt)
+        elif isinstance(stmt, SweepStmt):
+            self._analyze_sweep(stmt)
         else:
             self._analyze_stage2(stmt)
 
@@ -177,7 +228,19 @@ class SemanticAnalyzer:
     def _analyze_gate_time(self, stmt: GateTimeStmt) -> None:
         raise NotImplementedError
 
+    def _analyze_quantize(self, stmt: QuantizeStmt) -> None:
+        raise NotImplementedError
+
     def _analyze_tie(self, stmt: TieStmt) -> None:
+        raise NotImplementedError
+
+    def _analyze_tie_cmd(self, stmt: TieCmdStmt) -> None:
+        raise NotImplementedError
+
+    def _analyze_detune_cmd(self, stmt: DetuneCmdStmt) -> None:
+        raise NotImplementedError
+
+    def _analyze_relative_volume(self, stmt: RelativeVolumeStmt) -> None:
         raise NotImplementedError
 
     def _analyze_repeat_start(self, stmt: RepeatStartStmt) -> None:
@@ -187,6 +250,48 @@ class SemanticAnalyzer:
         raise NotImplementedError
 
     def _analyze_ext_cmd(self, stmt: ExtCmdStmt) -> None:
+        raise NotImplementedError
+
+    def _analyze_vol_env_use(self, stmt: VolumeEnvelopeUseStmt) -> None:
+        raise NotImplementedError
+
+    def _analyze_vol_env_def(self, stmt: VolumeEnvelopeDefStmt) -> None:
+        raise NotImplementedError
+
+    def _analyze_duty_env_def(self, stmt: DutyEnvelopeDefStmt) -> None:
+        raise NotImplementedError
+
+    def _analyze_duty_env_use(self, stmt: DutyEnvelopeUseStmt) -> None:
+        raise NotImplementedError
+
+    def _analyze_lfo_def(self, stmt: LfoDefStmt) -> None:
+        raise NotImplementedError
+
+    def _analyze_lfo_use(self, stmt: LfoUseStmt) -> None:
+        raise NotImplementedError
+
+    def _analyze_lfo_off(self, stmt: LfoOffStmt) -> None:
+        raise NotImplementedError
+
+    def _analyze_pitch_env_def(self, stmt: PitchEnvDefStmt) -> None:
+        raise NotImplementedError
+
+    def _analyze_pitch_env_use(self, stmt: PitchEnvUseStmt) -> None:
+        raise NotImplementedError
+
+    def _analyze_pitch_env_off(self, stmt: PitchEnvOffStmt) -> None:
+        raise NotImplementedError
+
+    def _analyze_note_env_def(self, stmt: NoteEnvDefStmt) -> None:
+        raise NotImplementedError
+
+    def _analyze_note_env_use(self, stmt: NoteEnvUseStmt) -> None:
+        raise NotImplementedError
+
+    def _analyze_note_env_off(self, stmt: NoteEnvOffStmt) -> None:
+        raise NotImplementedError
+
+    def _analyze_sweep(self, stmt: SweepStmt) -> None:
         raise NotImplementedError
 
     def _analyze_stage2(self, stmt: ASTNode) -> None:

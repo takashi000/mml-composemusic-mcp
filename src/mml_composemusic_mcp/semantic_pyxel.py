@@ -362,7 +362,11 @@ class PyxelSemanticAnalyzer(SemanticAnalyzer):
                 points = []
                 for i in range(1, len(stmt.params), 2):
                     duration = stmt.params[i]
-                    target = stmt.params[i - 1] if i - 1 < len(stmt.params) else stmt.params[-1]
+                    target = (
+                        stmt.params[i - 1]
+                        if i - 1 < len(stmt.params)
+                        else stmt.params[-1]
+                    )
                     points.append({"target_volume": target, "duration_ticks": duration})
                 ev = EnvelopeEvent(
                     tick_position=self.tick_position,

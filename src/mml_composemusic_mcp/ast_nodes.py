@@ -118,10 +118,38 @@ class DetuneStmt(ASTNode):
 
 
 @dataclass
+class QuantizeStmt(ASTNode):
+    """ppmck quantize command (q1-q8)."""
+
+    value: int
+
+
+@dataclass
 class TieStmt(ASTNode):
     """Tie/slur command (&)."""
 
     target: NoteStmt | RestStmt | int | None = None
+
+
+@dataclass
+class TieCmdStmt(ASTNode):
+    """ppmck tie command (^). Extends duration, pitch from previous note."""
+
+    target: NoteStmt | int | None = None
+
+
+@dataclass
+class DetuneCmdStmt(ASTNode):
+    """ppmck detune command (D<num>)."""
+
+    value: int
+
+
+@dataclass
+class RelativeVolumeStmt(ASTNode):
+    """ppmck relative volume (v+num / v-num)."""
+
+    delta: int  # positive=up, negative=down
 
 
 @dataclass
@@ -154,6 +182,112 @@ class ExtCmdStmt(ASTNode):
     params: list[int] = field(default_factory=list)
 
 
+# --- Envelope / LFO / vibrato statements (IR kept, synthesis warning) ---
+
+
+@dataclass
+class VolumeEnvelopeUseStmt(ASTNode):
+    """ppmck volume envelope use (@v<num>)."""
+
+    slot: int
+
+
+@dataclass
+class VolumeEnvelopeDefStmt(ASTNode):
+    """ppmck volume envelope definition (@v<num> = {...|...})."""
+
+    slot: int
+    points: list[int] = field(default_factory=list)
+    loop_points: list[int] = field(default_factory=list)
+
+
+@dataclass
+class DutyEnvelopeDefStmt(ASTNode):
+    """ppmck duty envelope definition (@<num> = {...|...})."""
+
+    slot: int
+    points: list[int] = field(default_factory=list)
+    loop_points: list[int] = field(default_factory=list)
+
+
+@dataclass
+class DutyEnvelopeUseStmt(ASTNode):
+    """ppmck duty envelope use (@@<num>)."""
+
+    slot: int
+
+
+@dataclass
+class LfoDefStmt(ASTNode):
+    """ppmck LFO definition (@MP<num> = {p1,p2,p3,p4})."""
+
+    slot: int
+    delay: int
+    speed: int
+    depth: int
+    transition: int
+
+
+@dataclass
+class LfoUseStmt(ASTNode):
+    """ppmck LFO use (MP<num>)."""
+
+    slot: int
+
+
+@dataclass
+class LfoOffStmt(ASTNode):
+    """ppmck LFO off (MPOF)."""
+
+    pass
+
+
+@dataclass
+class PitchEnvDefStmt(ASTNode):
+    """ppmck pitch envelope definition (@EP<num> = {...|...})."""
+
+    slot: int
+    points: list[int] = field(default_factory=list)
+    loop_points: list[int] = field(default_factory=list)
+
+
+@dataclass
+class PitchEnvUseStmt(ASTNode):
+    """ppmck pitch envelope use (EP<num>)."""
+
+    slot: int
+
+
+@dataclass
+class PitchEnvOffStmt(ASTNode):
+    """ppmck pitch envelope off (EPOF)."""
+
+    pass
+
+
+@dataclass
+class NoteEnvDefStmt(ASTNode):
+    """ppmck note envelope definition (@EN<num> = {...|...})."""
+
+    slot: int
+    points: list[int] = field(default_factory=list)
+    loop_points: list[int] = field(default_factory=list)
+
+
+@dataclass
+class NoteEnvUseStmt(ASTNode):
+    """ppmck note envelope use (EN<num>)."""
+
+    slot: int
+
+
+@dataclass
+class NoteEnvOffStmt(ASTNode):
+    """ppmck note envelope off (ENOF)."""
+
+    pass
+
+
 # --- Stage 2 statements (kept in AST but ignored by semantic analyzer) ---
 
 
@@ -164,15 +298,6 @@ class CountLengthStmt(ASTNode):
     note_name: str
     accidental: int
     count: int
-
-
-@dataclass
-class EnvelopeDefStmt(ASTNode):
-    """ppmck envelope definition (@v0 = { ... })."""
-
-    slot: int
-    points: list[int] = field(default_factory=list)
-    loop_points: list[int] = field(default_factory=list)
 
 
 @dataclass
@@ -201,13 +326,29 @@ Statement = (
     | GateTimeStmt
     | TransposeStmt
     | DetuneStmt
+    | QuantizeStmt
     | TieStmt
+    | TieCmdStmt
+    | DetuneCmdStmt
+    | RelativeVolumeStmt
     | RepeatStartStmt
     | RepeatEndStmt
     | BarStmt
     | ExtCmdStmt
+    | VolumeEnvelopeUseStmt
+    | VolumeEnvelopeDefStmt
+    | DutyEnvelopeDefStmt
+    | DutyEnvelopeUseStmt
+    | LfoDefStmt
+    | LfoUseStmt
+    | LfoOffStmt
+    | PitchEnvDefStmt
+    | PitchEnvUseStmt
+    | PitchEnvOffStmt
+    | NoteEnvDefStmt
+    | NoteEnvUseStmt
+    | NoteEnvOffStmt
     | CountLengthStmt
-    | EnvelopeDefStmt
     | SweepStmt
     | NoiseModeStmt
 )

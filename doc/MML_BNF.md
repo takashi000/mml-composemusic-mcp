@@ -71,8 +71,11 @@
                     | <length_cmd>
                     | <volume_cmd>
                     | <duty_cmd>
+                    | <quantize_cmd>
                     | <tempo_cmd>
                     | <tie_cmd>
+                    | <slur_cmd>
+                    | <ppmck_ext_cmd>
                     | <repeat_start>
                     | <repeat_end>
                     | <bar>
@@ -88,44 +91,85 @@
 
 <length_cmd>      ::= "l" <number>          /* l1 〜 l192 */
 <volume_cmd>      ::= "v" <number>          /* v0 〜 v15 */
-<duty_cmd>        ::= "q" <number>          /* q0 〜 q3, Pulse系のみ */
+
+<duty_cmd>        ::= "@" <number>          /* @0 〜 @3, Pulse系のみ */
+<quantize_cmd>    ::= "q" <number>          /* q1 〜 q8 */
 <tempo_cmd>       ::= "t" <number>          /* t1 〜 */
 
-<tie_cmd>         ::= <tie> (<note> | <rest> | <number>)
+<tie_cmd>         ::= "^" (<note> | <number>)
+<slur_cmd>        ::= "&" (<note> | <rest> | <number>)
 
 <comment>         ::= ";" <string_to_eol>
 ```
 
-### 2.3 将来予定コマンド（現在の受理文法には含めない）
+### 2.3 拡張コマンド（第1段階: IR 保持のみ、合成無視）
+
+```bnf
+<ppmck_ext_cmd>  ::= <relative_volume_cmd>
+                    | <detune_cmd>
+                    | <sweep_cmd>
+                    | <vol_envelope_def>
+                    | <vol_envelope_use>
+                    | <duty_envelope_def>
+                    | <duty_envelope_use>
+                    | <lfo_def>
+                    | <lfo_use>
+                    | <lfo_off>
+                    | <pitch_env_def>
+                    | <pitch_env_use>
+                    | <pitch_env_off>
+                    | <note_env_def>
+                    | <note_env_use>
+                    | <note_env_off>
+
+<relative_volume_cmd>
+                  ::= "v+" <number>?        /* 1 〜 15 */
+                    | "v-" <number>?        /* 1 〜 15 */
+
+<detune_cmd>      ::= "D" <signed_number>  /* -127 〜 126 */
+<sweep_cmd>       ::= "s" <number> "," <number>
+
+<vol_envelope_def>::= "@v" <number> "=" "{" <number_list> "|" <number_list>? "}"
+<vol_envelope_use>::= "@v" <number>
+
+<duty_envelope_def>::= "@" <number> "=" "{" <number_list> "|" <number_list>? "}"
+<duty_envelope_use>::= "@@" <number>
+
+<lfo_def>        ::= "@MP" <number> "=" "{" <number> "," <number> "," <number> "," <number> "}"
+<lfo_use>        ::= "MP" <number>
+<lfo_off>        ::= "MPOF"
+
+<pitch_env_def>   ::= "@EP" <number> "=" "{" <signed_number_list> "|" <signed_number_list>? "}"
+<pitch_env_use>   ::= "EP" <number>
+<pitch_env_off>   ::= "EPOF"
+
+<note_env_def>    ::= "@EN" <number> "=" "{" <signed_number_list> "|" <signed_number_list>? "}"
+<note_env_use>    ::= "EN" <number>
+<note_env_off>   ::= "ENOF"
+
+<signed_number>   ::= ("+" | "-")? <number>
+<number_list>     ::= <number> (","? <number>)*
+<signed_number_list> ::= <signed_number> (","? <signed_number>)*
+```
+
+### 2.4 将来予定コマンド（現在の受理文法には含めない）
 
 以下は設計予約であり、現在は構文エラーになる。実装時に受理文法へ移す。
 
 ```bnf
 <ppmck_stage2>    ::= <count_length>
-                    | <envelope_def>
-                    | <envelope_use>
-                    | <duty_envelope_def>
-                    | <sweep_cmd>
                     | <section_repeat>
                     | <transpose_cmd>
                     | <noise_mode_cmd>
 
 <count_length>    ::= <note_name> <accidental>? "%" <number>
 
-<envelope_def>    ::= "@v" <number> "=" "{" <number_list> "|" <number_list>? "}"
-<envelope_use>    ::= "@v" <number>
-
-<duty_envelope_def>::= "@" <number> "=" "{" <number_list> "|" <number_list>? "}"
-
-<sweep_cmd>       ::= "s" <number> "," <number>
-
 <section_repeat>  ::= "[" <ppmck_statement>+ "]" <number>?
 
 <transpose_cmd>   ::= "K" <number>
 <noise_mode_cmd>  ::= "m" <number>
-
-<number_list>     ::= <number> (","? <number>)*
 ```
+
 
 ---
 
@@ -211,16 +255,27 @@
 
 ## 5. 値範囲
 
-| コマンド | 有効範囲 | デフォルト |
-|---|---|---|
-| `o` / `O` | 0 〜 7 | 4 |
-| `l` / `L` | 1 〜 192 | 4 |
-| `v` (ppmck) | 0 〜 15 | 15 |
-| `V` (pyxel) | 0 〜 127 | 100 |
-| `q` (ppmck) | 0 〜 3 | 2 |
-| `@` (pyxel) | 0 〜 3 | — |
-| `Q` (pyxel) | 0 〜 100 | 80 |
-| `t` / `T` | 1 〜 | 120 |
+| コマンド | モード | 有効範囲 | デフォルト | 備考 |
+|---|---|---|---|---|
+| `o` / `O` | 両方 | 0 〜 7 | 4 | |
+| `l` / `L` | 両方 | 1 〜 192 | 4 | |
+| `v` | ppmck | 0 〜 15 | 15 | |
+| `V` | pyxel | 0 〜 127 | 100 | |
+| `v+` / `v-` | ppmck | 1 〜 15 | 1 | 相対音量（IR保持のみ） |
+| `@` | ppmck | 0 〜 3 | 2 | デューティ比（Pulse系のみ） |
+| `@` | pyxel | 0 〜 3 | — | デューティ比（Pulse系のみ） |
+| `q` | ppmck | 1 〜 8 | 8 | クオンタイズ（gate_time = value / 8） |
+| `Q` | pyxel | 0 〜 100 | 80 | ゲートタイム（%） |
+| `t` / `T` | 両方 | 1 〜 | 120 | |
+| `D` | ppmck | -127 〜 126 | 0 | ディチューン（IR保持のみ） |
+| `s` | ppmck | 0 〜 15, 0 〜 7 | — | スイープ `s<x>,<y>`（IR保持のみ） |
+| `@v` | ppmck | 0 〜 255 | — | 音量エンベロープ（IR保持のみ） |
+| `@@` | ppmck | 0 〜 255 | — | デューティエンベロープ（IR保持のみ） |
+| `@MP` / `MP` / `MPOF` | ppmck | 0 〜 255 | — | LFO（IR保持のみ） |
+| `@EP` / `EP` / `EPOF` | ppmck | 0 〜 255 | — | ピッチエンベロープ（IR保持のみ） |
+| `@EN` / `EN` / `ENOF` | ppmck | 0 〜 255 | — | ノートエンベロープ（IR保持のみ） |
+| `K` | pyxel | -127 〜 127 | 0 | トランスポーズ（半音） |
+| `Y` | pyxel | -127 〜 127 | 0 | ディチューン（セント） |
 
 ---
 
@@ -228,6 +283,8 @@
 
 - 本 BNF は `mml-composemusic-mcp` の**サポート範囲**を定義するものであり、オリジナルの PPMCK や Pyxel の全機能を網羅するものではない。
 - 第2段階予定コマンドは設計予約として記載するが、現在の受理文法には含めない。
-- `@ENV` / `@VIB` / `@GLI` は構文解析してIRへ保持し、合成未対応を `SEMANTIC_UNSUPPORTED_FEATURE` で警告する。
-- コマンド文字は ppmck では小文字、pyxel では大文字を使用する。音符・休符も同じ規則に従う。
+- ppmck モードの `@v` / `@@` / `@MP` / `@EP` / `@EN`、および `D` / `s` / `v+` / `v-` は構文解析して IR へ保持し、合成には反映しない。未対応を `SEMANTIC_UNSUPPORTED_FEATURE` で警告する。
+- pyxel モードの `@ENV` / `@VIB` / `@GLI` も同様に IR 保持のみで、`SEMANTIC_UNSUPPORTED_FEATURE` 警告を返す。
+- コマンド文字は ppmck では小文字、pyxel では大文字を使用する。音符・休符も同じ規則に従う。ただし ppmck の `D`（ディチューン）は大文字のみ受理する（小文字 `d` は音符）。
+- `^` は ppmck モード専用のタイ、`&` は両モード共通のスラー（slur）として扱う。
 - 詳細な実装アーキテクチャは [Design.md](Design.md) を参照。

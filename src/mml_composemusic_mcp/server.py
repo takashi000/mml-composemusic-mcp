@@ -228,15 +228,24 @@ def compose_mml(
 def _dict_to_note_sequence(data: dict) -> NoteSequence:
     from .ir import (
         ChannelSequence,
+        DetuneEvent,
+        DutyEnvelopeEvent,
         DutyEvent,
         EnvelopeEvent,
         GlideEvent,
+        LfoEvent,
+        NoteEnvEvent,
         NoteEvent,
         NoteSequence,
+        PitchEnvEvent,
+        QuantizeEvent,
+        RelativeVolumeEvent,
         RepeatEvent,
         RestEvent,
+        SweepEvent,
         TempoEvent,
         VibratoEvent,
+        VolumeEnvelopeEvent,
         VolumeEvent,
     )
 
@@ -268,6 +277,24 @@ def _dict_to_note_sequence(data: dict) -> NoteSequence:
                 ch.events.append(RepeatEvent(**ev))
             elif ev_type == "envelope":
                 ch.events.append(EnvelopeEvent(**ev))
+            elif ev_type == "quantize":
+                ch.events.append(QuantizeEvent(**ev))
+            elif ev_type == "detune":
+                ch.events.append(DetuneEvent(**ev))
+            elif ev_type == "sweep":
+                ch.events.append(SweepEvent(**ev))
+            elif ev_type == "rel_volume":
+                ch.events.append(RelativeVolumeEvent(**ev))
+            elif ev_type == "vol_envelope":
+                ch.events.append(VolumeEnvelopeEvent(**ev))
+            elif ev_type == "duty_envelope":
+                ch.events.append(DutyEnvelopeEvent(**ev))
+            elif ev_type == "lfo":
+                ch.events.append(LfoEvent(**ev))
+            elif ev_type == "pitch_envelope":
+                ch.events.append(PitchEnvEvent(**ev))
+            elif ev_type == "note_envelope":
+                ch.events.append(NoteEnvEvent(**ev))
             elif ev_type == "vibrato":
                 ch.events.append(VibratoEvent(**ev))
             elif ev_type == "glide":

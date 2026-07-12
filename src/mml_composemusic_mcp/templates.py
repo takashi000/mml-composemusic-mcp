@@ -2,11 +2,11 @@
 
 TEMPLATES = {
     "ppmck": {
-        "basic": '#TITLE "Basic Song"\n#COMPOSER "LLM"\n\nA t120 l8 o4 v15 q2\n  c d e f | g a b > c\n\nB l8 o3 v12 q1\n  e g b r | e g b r\n\nT l4 o3 v7\n  c2 g2 e2 c2\n\nN l8 v10\n  c r c r | c r c r\n',
-        "melody": '#TITLE "Melody Lead"\n#COMPOSER "LLM"\n\nA t120 l8 o5 v15 q2\n  c e g e | d f a f | e g b g | c4 r4\n\nB l8 o4 v10 q1\n  c e g e | c e g e | d f a f | c4 r4\n\nT l4 o3 v7\n  c2 g2 | a2 f2 | g2 d2 | c2 r2\n\nN l8 v8\n  c r c r | c r c r | c r c r | c r c r\n',
-        "chord": '#TITLE "Chord Backing"\n#COMPOSER "LLM"\n\nA t120 l4 o4 v12 q2\n  c e g c | f a > c f | g b > d g | c e g c\n\nB l4 o4 v12 q1\n  e g b e | f a > c f | d g b d | e g b e\n\nT l2 o3 v7\n  c2 | f2 | g2 | c2\n\nN l8 v8\n  r c r c | r c r c | r c r c | r c r c\n',
-        "drum": '#TITLE "Drum Beat"\n#COMPOSER "LLM"\n\nA t120 l8 o4 v15 q2\n  c r e r | g r e r | c r e r | g r c r\n\nB l8 o3 v12 q1\n  e r g r | e r g r | e r g r | e r g r\n\nT l4 o2 v7\n  c2 c2 | c2 c2 | c2 c2 | c2 c2\n\nN l16 v10\n  c r c r c r c r | c r c r c r c r\n  c r c r c r c r | c r c r c r c r\n',
-        "empty": '#TITLE "Empty Template"\n#COMPOSER "LLM"\n\nA t120 l4 o4 v15 q2\n  r1\n\nB l4 o3 v12 q1\n  r1\n\nT l4 o3 v7\n  r1\n\nN l4 v10\n  r1\n',
+        "basic": '#TITLE "Basic Song"\n#COMPOSER "LLM"\n\nA t120 l8 o4 v15 @2\n  c d e f | g a b > c\n\nB l8 o3 v12 @1\n  e g b r | e g b r\n\nT l4 o3 v7\n  c2 g2 e2 c2\n\nN l8 v10\n  c r c r | c r c r\n',
+        "melody": '#TITLE "Melody Lead"\n#COMPOSER "LLM"\n\nA t120 l8 o5 v15 @2\n  c e g e | d f a f | e g b g | c4 r4\n\nB l8 o4 v10 @1\n  c e g e | c e g e | d f a f | c4 r4\n\nT l4 o3 v7\n  c2 g2 | a2 f2 | g2 d2 | c2 r2\n\nN l8 v8\n  c r c r | c r c r | c r c r | c r c r\n',
+        "chord": '#TITLE "Chord Backing"\n#COMPOSER "LLM"\n\nA t120 l4 o4 v12 @2\n  c e g c | f a > c f | g b > d g | c e g c\n\nB l4 o4 v12 @1\n  e g b e | f a > c f | d g b d | e g b e\n\nT l2 o3 v7\n  c2 | f2 | g2 | c2\n\nN l8 v8\n  r c r c | r c r c | r c r c | r c r c\n',
+        "drum": '#TITLE "Drum Beat"\n#COMPOSER "LLM"\n\nA t120 l8 o4 v15 @2\n  c r e r | g r e r | c r e r | g r c r\n\nB l8 o3 v12 @1\n  e r g r | e r g r | e r g r | e r g r\n\nT l4 o2 v7\n  c2 c2 | c2 c2 | c2 c2 | c2 c2\n\nN l16 v10\n  c r c r c r c r | c r c r c r c r\n  c r c r c r c r | c r c r c r c r\n',
+        "empty": '#TITLE "Empty Template"\n#COMPOSER "LLM"\n\nA t120 l4 o4 v15 @2\n  r1\n\nB l4 o3 v12 @1\n  r1\n\nT l4 o3 v7\n  r1\n\nN l4 v10\n  r1\n',
     },
     "pyxel": {
         "basic": "0: T120 L8 O4 V100 @1\n   C D E F | G A B >C\n\n1: L8 O3 V80 @2\n   E G B R | E G B R\n\n2: L4 O3 V60\n   C2 G2 E2 C2\n\n3: L8 V80\n   C R C R | C R C R\n",

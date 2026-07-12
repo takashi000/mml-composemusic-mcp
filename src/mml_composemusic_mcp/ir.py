@@ -134,11 +134,95 @@ class RepeatEvent:
 
 
 @dataclass
+class QuantizeEvent:
+    type: str = "quantize"
+    tick_position: int = 0
+    value: int = 8  # 1-8
+
+
+@dataclass
+class DetuneEvent:
+    type: str = "detune"
+    tick_position: int = 0
+    value: int = 0  # -127 to 126
+
+
+@dataclass
+class SweepEvent:
+    type: str = "sweep"
+    tick_position: int = 0
+    speed: int = 0
+    depth: int = 0
+
+
+@dataclass
+class RelativeVolumeEvent:
+    type: str = "rel_volume"
+    tick_position: int = 0
+    delta: int = 0
+
+
+@dataclass
 class EnvelopeEvent:
     type: str = "envelope"
     tick_position: int = 0
     slot: int = 0
     points: list[dict[str, int]] = field(default_factory=list)
+
+
+@dataclass
+class VolumeEnvelopeEvent:
+    type: str = "vol_envelope"
+    tick_position: int = 0
+    slot: int = 0
+    points: list[int] = field(default_factory=list)
+    loop_points: list[int] = field(default_factory=list)
+    is_definition: bool = False
+
+
+@dataclass
+class DutyEnvelopeEvent:
+    type: str = "duty_envelope"
+    tick_position: int = 0
+    slot: int = 0
+    points: list[int] = field(default_factory=list)
+    loop_points: list[int] = field(default_factory=list)
+    is_definition: bool = False
+
+
+@dataclass
+class LfoEvent:
+    type: str = "lfo"
+    tick_position: int = 0
+    slot: int = 0
+    delay: int = 0
+    speed: int = 0
+    depth: int = 0
+    transition: int = 0
+    is_definition: bool = False
+    is_off: bool = False
+
+
+@dataclass
+class PitchEnvEvent:
+    type: str = "pitch_envelope"
+    tick_position: int = 0
+    slot: int = 0
+    points: list[int] = field(default_factory=list)
+    loop_points: list[int] = field(default_factory=list)
+    is_definition: bool = False
+    is_off: bool = False
+
+
+@dataclass
+class NoteEnvEvent:
+    type: str = "note_envelope"
+    tick_position: int = 0
+    slot: int = 0
+    points: list[int] = field(default_factory=list)
+    loop_points: list[int] = field(default_factory=list)
+    is_definition: bool = False
+    is_off: bool = False
 
 
 @dataclass
@@ -164,7 +248,16 @@ Event = (
     | DutyEvent
     | TempoEvent
     | RepeatEvent
+    | QuantizeEvent
+    | DetuneEvent
+    | SweepEvent
+    | RelativeVolumeEvent
     | EnvelopeEvent
+    | VolumeEnvelopeEvent
+    | DutyEnvelopeEvent
+    | LfoEvent
+    | PitchEnvEvent
+    | NoteEnvEvent
     | VibratoEvent
     | GlideEvent
 )
@@ -209,9 +302,27 @@ class NoteSequence:
 
 def event_to_dict(event: Event) -> dict[str, Any]:
     if isinstance(
-        event, (NoteEvent, RestEvent, VolumeEvent, DutyEvent, TempoEvent, RepeatEvent)
+        event,
+        (
+            NoteEvent,
+            RestEvent,
+            VolumeEvent,
+            DutyEvent,
+            TempoEvent,
+            RepeatEvent,
+            QuantizeEvent,
+            DetuneEvent,
+            SweepEvent,
+            RelativeVolumeEvent,
+            EnvelopeEvent,
+            VolumeEnvelopeEvent,
+            DutyEnvelopeEvent,
+            LfoEvent,
+            PitchEnvEvent,
+            NoteEnvEvent,
+            VibratoEvent,
+            GlideEvent,
+        ),
     ):
-        return event.__dict__
-    if isinstance(event, (EnvelopeEvent, VibratoEvent, GlideEvent)):
         return event.__dict__
     raise TypeError(f"Unsupported event type: {type(event)}")

@@ -6,7 +6,7 @@ from mml_composemusic_mcp.parser_ppmck import parse_ppmck
 from mml_composemusic_mcp.parser_pyxel import parse_pyxel
 
 PPMCK_EXAMPLE = """#TITLE "Test"
-A t150 l8 o4 v15 q2
+A t150 l8 o4 v15 @2
   c d e f
 B o3
   c e g
@@ -27,9 +27,7 @@ def test_ppmck_parse():
     assert len(program.tracks) == 2
     assert program.tracks[0].channel == "Pulse1"
     assert program.tracks[1].channel == "Pulse2"
-    notes = [
-        s for s in program.tracks[0].statements if isinstance(s, NoteStmt)
-    ]
+    notes = [s for s in program.tracks[0].statements if isinstance(s, NoteStmt)]
     assert notes[0].note_name == "c"
 
 
@@ -40,9 +38,7 @@ def test_pyxel_parse():
     assert not any(e.severity == "error" for e in errors)
     assert len(program.tracks) == 2
     assert program.tracks[0].channel == "Pulse1"
-    notes = [
-        s for s in program.tracks[0].statements if isinstance(s, NoteStmt)
-    ]
+    notes = [s for s in program.tracks[0].statements if isinstance(s, NoteStmt)]
     assert notes[0].note_name == "c"
 
 

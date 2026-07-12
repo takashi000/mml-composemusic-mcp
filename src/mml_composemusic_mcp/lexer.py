@@ -17,6 +17,7 @@ class TokenType(Enum):
     TEMPO = auto()
     GATE_TIME = auto()
     TIE = auto()
+    TIE_CMD = auto()  # ^ (ppmck tie)
     REPEAT_START = auto()
     REPEAT_END = auto()
     BAR = auto()
@@ -29,7 +30,26 @@ class TokenType(Enum):
     DOT = auto()
     AT = auto()
     TRANSPOSE = auto()
-    DETUNE = auto()
+    DETUNE = auto()  # D (ppmck detune)
+    SWEEP = auto()  # s (ppmck sweep)
+    QUANTIZE = auto()  # q (ppmck quantize)
+    REL_VOL_UP = auto()  # v+ (ppmck)
+    REL_VOL_DOWN = auto()  # v- (ppmck)
+    DUTY_ENV_USE = auto()  # @@ (ppmck)
+    VOL_ENV = auto()  # @v (ppmck)
+    LFO_DEF = auto()  # @MP (ppmck)
+    LFO_USE = auto()  # MP (ppmck)
+    LFO_OFF = auto()  # MPOF (ppmck)
+    PITCH_ENV_DEF = auto()  # @EP (ppmck)
+    PITCH_ENV_USE = auto()  # EP (ppmck)
+    PITCH_ENV_OFF = auto()  # EPOF (ppmck)
+    NOTE_ENV_DEF = auto()  # @EN (ppmck)
+    NOTE_ENV_USE = auto()  # EN (ppmck)
+    NOTE_ENV_OFF = auto()  # ENOF (ppmck)
+    BRACE_OPEN = auto()  # { (ppmck envelope def)
+    BRACE_CLOSE = auto()  # } (ppmck envelope def)
+    EQUAL = auto()  # = (ppmck envelope def)
+    COMMA = auto()  # , (ppmck sweep/envelope def)
     EXT_CMD = auto()  # @ENV, @VIB, @GLI
     INVALID = auto()  # unrecognised character
     EOF = auto()
@@ -151,6 +171,10 @@ class Lexer:
             self._advance()
             self._emit(TokenType.TIE, "&", "&")
             return
+        if ch == "^":
+            self._advance()
+            self._emit(TokenType.TIE_CMD, "^", "^")
+            return
         if ch == "[":
             self._advance()
             self._emit(TokenType.REPEAT_START, "[", "[")
@@ -159,6 +183,22 @@ class Lexer:
             self._advance()
             count = self._read_number()
             self._emit(TokenType.REPEAT_END, count, "]" + count)
+            return
+        if ch == "{":
+            self._advance()
+            self._emit(TokenType.BRACE_OPEN, "{", "{")
+            return
+        if ch == "}":
+            self._advance()
+            self._emit(TokenType.BRACE_CLOSE, "}", "}")
+            return
+        if ch == "=":
+            self._advance()
+            self._emit(TokenType.EQUAL, "=", "=")
+            return
+        if ch == ",":
+            self._advance()
+            self._emit(TokenType.COMMA, ",", ",")
             return
         if ch == ".":
             self._advance()
@@ -176,6 +216,40 @@ class Lexer:
             self._advance()
             self._emit(TokenType.FLAT, "-", "-")
             return
+        if ch == "@":
+            self._advance()
+            next_ch = self._peek()
+            if next_ch == "@":
+                self._advance()
+                num = self._read_number()
+                self._emit(TokenType.DUTY_ENV_USE, num, "@@" + num)
+                return
+            if next_ch == "v":
+                self._advance()
+                num = self._read_number()
+                self._emit(TokenType.VOL_ENV, num, "@v" + num)
+                return
+            if next_ch == "M" and self._peek(1) == "P":
+                self._advance()
+                self._advance()
+                num = self._read_number()
+                self._emit(TokenType.LFO_DEF, num, "@MP" + num)
+                return
+            if next_ch == "E" and self._peek(1) == "P":
+                self._advance()
+                self._advance()
+                num = self._read_number()
+                self._emit(TokenType.PITCH_ENV_DEF, num, "@EP" + num)
+                return
+            if next_ch == "E" and self._peek(1) == "N":
+                self._advance()
+                self._advance()
+                num = self._read_number()
+                self._emit(TokenType.NOTE_ENV_DEF, num, "@EN" + num)
+                return
+            num = self._read_number()
+            self._emit(TokenType.DUTY, num, "@" + num)
+            return
         if ch.isdigit():
             num = self._read_number()
             self._emit(TokenType.NUMBER, num, num)
@@ -185,9 +259,53 @@ class Lexer:
             self._emit(TokenType.TRACK_HEADER, raw.upper(), raw)
             return
         if ch.isalpha():
+            # 2-character commands: MP, EP, EN and their OFF variants
+            if ch == "M" and self._peek(1) == "P":
+                self._advance()
+                self._advance()
+                if self._peek() == "O" and self._peek(1) == "F":
+                    self._advance()
+                    self._advance()
+                    self._emit(TokenType.LFO_OFF, "MPOF", "MPOF")
+                else:
+                    num = self._read_number()
+                    self._emit(TokenType.LFO_USE, num, "MP" + num)
+                return
+            if ch == "E" and self._peek(1) == "P":
+                self._advance()
+                self._advance()
+                if self._peek() == "O" and self._peek(1) == "F":
+                    self._advance()
+                    self._advance()
+                    self._emit(TokenType.PITCH_ENV_OFF, "EPOF", "EPOF")
+                else:
+                    num = self._read_number()
+                    self._emit(TokenType.PITCH_ENV_USE, num, "EP" + num)
+                return
+            if ch == "E" and self._peek(1) == "N":
+                self._advance()
+                self._advance()
+                if self._peek() == "O" and self._peek(1) == "F":
+                    self._advance()
+                    self._advance()
+                    self._emit(TokenType.NOTE_ENV_OFF, "ENOF", "ENOF")
+                else:
+                    num = self._read_number()
+                    self._emit(TokenType.NOTE_ENV_USE, num, "EN" + num)
+                return
+
             cmd = self._advance()
             lower = cmd.lower()
-            if lower in "olvtq":
+            if lower in "olvt":
+                if lower == "v" and self._peek() in "+-":
+                    sign = self._advance()
+                    num = self._read_number()
+                    raw = cmd + sign + num
+                    if sign == "+":
+                        self._emit(TokenType.REL_VOL_UP, num, raw)
+                    else:
+                        self._emit(TokenType.REL_VOL_DOWN, num, raw)
+                    return
                 num = self._read_number()
                 raw = cmd + num
                 if lower == "o":
@@ -198,8 +316,22 @@ class Lexer:
                     self._emit(TokenType.VOLUME, num, raw)
                 elif lower == "t":
                     self._emit(TokenType.TEMPO, num, raw)
-                elif lower == "q":
-                    self._emit(TokenType.DUTY, num, raw)
+                return
+            if lower == "q":
+                num = self._read_number()
+                self._emit(TokenType.QUANTIZE, num, "q" + num)
+                return
+            if cmd == "D":
+                num = self._read_signed_number()
+                self._emit(TokenType.DETUNE, num, "D" + num)
+                return
+            if lower == "s":
+                num0 = self._read_number()
+                if self._peek() == ",":
+                    self._advance()
+                num1 = self._read_number()
+                raw = f"s{num0},{num1}"
+                self._emit(TokenType.SWEEP, f"{num0},{num1}", raw)
                 return
             note = lower
             if note in "cdefgabr":

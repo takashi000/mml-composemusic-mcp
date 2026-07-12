@@ -3,6 +3,7 @@
 from mml_composemusic_mcp.ir import (
     DutyEvent,
     EnvelopeEvent,
+    ErrorCode,
     NoteEvent,
 )
 from mml_composemusic_mcp.lexer import tokenize
@@ -54,11 +55,80 @@ def test_pyxel_channel_assignment():
 # --- Duty ---
 
 
-def test_ppmck_duty_q():
-    source = "A t120 l4 o4 q3\n  c"
+def test_ppmck_duty_at():
+    source = "A t120 l4 o4 @3\n  c"
     ns, errors = _analyze_ppmck(source)
     duties = [e for e in ns.channels["Pulse1"].events if isinstance(e, DutyEvent)]
     assert duties and duties[0].value == 3
+
+
+def test_ppmck_quantize():
+    source = "A t120 l4 o4 q4\n  c"
+    ns, errors = _analyze_ppmck(source)
+    notes = [e for e in ns.channels["Pulse1"].events if isinstance(e, NoteEvent)]
+    assert notes and notes[0].gate_time == 0.5
+
+
+def test_ppmck_tie_cmd():
+    source = "A t120 l4 o4\n  c4 ^4"
+    ns, errors = _analyze_ppmck(source)
+    notes = [e for e in ns.channels["Pulse1"].events if isinstance(e, NoteEvent)]
+    assert len(notes) == 1
+    assert notes[0].duration == 384
+
+
+def test_ppmck_detune_warning():
+    source = "A t120 l4 o4 D10\n  c"
+    ns, errors = _analyze_ppmck(source)
+    assert any(e.code == ErrorCode.SEMANTIC_UNSUPPORTED_FEATURE for e in errors)
+
+
+def test_ppmck_sweep_warning():
+    source = "A t120 l4 o4 s1,2\n  c"
+    ns, errors = _analyze_ppmck(source)
+    assert any(e.code == ErrorCode.SEMANTIC_UNSUPPORTED_FEATURE for e in errors)
+
+
+def test_ppmck_rel_vol_warning():
+    source = "A t120 l4 o4 v+5\n  c"
+    ns, errors = _analyze_ppmck(source)
+    assert any(e.code == ErrorCode.SEMANTIC_UNSUPPORTED_FEATURE for e in errors)
+
+
+def test_ppmck_vol_env_use_warning():
+    source = "A t120 l4 o4 @v0\n  c"
+    ns, errors = _analyze_ppmck(source)
+    assert any(e.code == ErrorCode.SEMANTIC_UNSUPPORTED_FEATURE for e in errors)
+
+
+def test_ppmck_vol_env_def_warning():
+    source = "A t120 l4 o4\n@v0 = { 15, 10, | 5 }\n  c"
+    ns, errors = _analyze_ppmck(source)
+    assert any(e.code == ErrorCode.SEMANTIC_UNSUPPORTED_FEATURE for e in errors)
+
+
+def test_ppmck_lfo_def_warning():
+    source = "A t120 l4 o4\n@MP0 = { 0, 10, 5, 0 }\n  c"
+    ns, errors = _analyze_ppmck(source)
+    assert any(e.code == ErrorCode.SEMANTIC_UNSUPPORTED_FEATURE for e in errors)
+
+
+def test_ppmck_duty_env_use_warning():
+    source = "A t120 l4 o4 @@0\n  c"
+    ns, errors = _analyze_ppmck(source)
+    assert any(e.code == ErrorCode.SEMANTIC_UNSUPPORTED_FEATURE for e in errors)
+
+
+def test_ppmck_duty_triangle_error():
+    source = "T t120 l4 o3 @2\n  c"
+    ns, errors = _analyze_ppmck(source)
+    assert any(e.code == ErrorCode.SEMANTIC_CHANNEL_MISMATCH for e in errors)
+
+
+def test_ppmck_quantize_range_error():
+    source = "A t120 l4 o4 q9\n  c"
+    ns, errors = _analyze_ppmck(source)
+    assert any(e.code == ErrorCode.SEMANTIC_VALUE_OUT_OF_RANGE for e in errors)
 
 
 def test_pyxel_at_duty():

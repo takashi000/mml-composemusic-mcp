@@ -5,7 +5,7 @@ from hypothesis import given, seed, settings
 from hypothesis import strategies as st
 
 from mml_composemusic_mcp.ast_nodes import NoteStmt, TransposeStmt
-from mml_composemusic_mcp.ir import ErrorCode, NoteEvent
+from mml_composemusic_mcp.ir import DutyEvent, ErrorCode, NoteEvent
 from mml_composemusic_mcp.lexer import TokenType, tokenize
 from mml_composemusic_mcp.parser_ppmck import parse_ppmck
 from mml_composemusic_mcp.parser_pyxel import parse_pyxel
@@ -58,7 +58,7 @@ def test_note_follows_bnf_accidental_before_length(
 @pytest.mark.parametrize(
     ("mode", "source"),
     [
-        ("ppmck", "A o l v q t c"),
+        ("ppmck", "A o l v @ t c"),
         ("pyxel", "0: O L V Q @ T K Y C"),
         ("pyxel", "0: K+ Y- C"),
     ],
@@ -147,6 +147,55 @@ def test_validate_full_pyxel_path_preserves_warning_and_summary():
         warning["code"] == ErrorCode.SEMANTIC_UNSUPPORTED_FEATURE.value
         for warning in result["warnings"]
     )
+
+
+@pytest.mark.parametrize(
+    ("source", "expected_warning_code"),
+    [
+        ("A D10 c", ErrorCode.SEMANTIC_UNSUPPORTED_FEATURE),
+        ("A s1,2 c", ErrorCode.SEMANTIC_UNSUPPORTED_FEATURE),
+        ("A v+5 c", ErrorCode.SEMANTIC_UNSUPPORTED_FEATURE),
+        ("A @v0 c", ErrorCode.SEMANTIC_UNSUPPORTED_FEATURE),
+        ("A @@0 c", ErrorCode.SEMANTIC_UNSUPPORTED_FEATURE),
+        ("A MP1 c", ErrorCode.SEMANTIC_UNSUPPORTED_FEATURE),
+        ("A MPOF c", ErrorCode.SEMANTIC_UNSUPPORTED_FEATURE),
+        ("A EP1 c", ErrorCode.SEMANTIC_UNSUPPORTED_FEATURE),
+        ("A EPOF c", ErrorCode.SEMANTIC_UNSUPPORTED_FEATURE),
+        ("A EN1 c", ErrorCode.SEMANTIC_UNSUPPORTED_FEATURE),
+        ("A ENOF c", ErrorCode.SEMANTIC_UNSUPPORTED_FEATURE),
+    ],
+)
+def test_ppmck_new_commands_produce_warning(source, expected_warning_code):
+    _, _, _, errors = parse_pipeline(source, "ppmck")
+    assert not any(e.severity == "error" for e in errors)
+    assert expected_warning_code in error_codes(errors)
+
+
+def test_ppmck_at_duty_in_pulse_channel():
+    _, _, ns, errors = parse_pipeline("A @2 c", "ppmck")
+    assert not any(e.severity == "error" for e in errors)
+    duties = [e for e in ns.channels["Pulse1"].events if isinstance(e, DutyEvent)]
+    assert duties and duties[0].value == 2
+
+
+def test_ppmck_at_duty_in_triangle_channel_warns():
+    _, _, _, errors = parse_pipeline("T @2 c", "ppmck")
+    assert ErrorCode.SEMANTIC_CHANNEL_MISMATCH in error_codes(errors)
+
+
+def test_ppmck_quantize_sets_gate_time():
+    _, _, ns, errors = parse_pipeline("A q4 c", "ppmck")
+    assert not any(e.severity == "error" for e in errors)
+    notes = [e for e in ns.channels["Pulse1"].events if isinstance(e, NoteEvent)]
+    assert notes and notes[0].gate_time == 0.5
+
+
+def test_ppmck_tie_cmd_extends_duration():
+    _, _, ns, errors = parse_pipeline("A c4 ^4", "ppmck")
+    assert not any(e.severity == "error" for e in errors)
+    notes = [e for e in ns.channels["Pulse1"].events if isinstance(e, NoteEvent)]
+    assert len(notes) == 1
+    assert notes[0].duration == 384
 
 
 note_names = st.sampled_from(tuple("cdefgab"))
