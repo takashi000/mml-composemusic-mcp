@@ -161,6 +161,13 @@ class RepeatStartStmt(ASTNode):
 
 
 @dataclass
+class RepeatBreakStmt(ASTNode):
+    """Last-pass break marker (|) inside a ppmck repeat."""
+
+    pass
+
+
+@dataclass
 class RepeatEndStmt(ASTNode):
     """End of repeat section (] with optional count)."""
 
@@ -333,6 +340,7 @@ Statement = (
     | DetuneCmdStmt
     | RelativeVolumeStmt
     | RepeatStartStmt
+    | RepeatBreakStmt
     | RepeatEndStmt
     | BarStmt
     | ExtCmdStmt

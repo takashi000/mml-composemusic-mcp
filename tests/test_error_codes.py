@@ -82,17 +82,17 @@ def test_syntax_unexpected_token(compose_mml):
     assert result["valid"] is True
 
 
-# --- SEMANTIC_OUTSIDE_TRACK ---
-def test_semantic_outside_track_ppmck(compose_mml):
+# --- commands outside tracks are syntax errors ---
+def test_command_outside_track_ppmck(compose_mml):
     result = compose_mml(action="validate", mml="t120\nA l4\n  c", mode="ppmck")
-    assert result["valid"] is True
-    assert _find_code(result, ErrorCode.SEMANTIC_OUTSIDE_TRACK.value, "warnings")
+    assert result["valid"] is False
+    assert _find_code(result, ErrorCode.SYNTAX_UNEXPECTED_TOKEN.value, "errors")
 
 
-def test_semantic_outside_track_pyxel(compose_mml):
+def test_command_outside_track_pyxel(compose_mml):
     result = compose_mml(action="validate", mml="T120\n0: L4\n  C", mode="pyxel")
-    assert result["valid"] is True
-    assert _find_code(result, ErrorCode.SEMANTIC_OUTSIDE_TRACK.value, "warnings")
+    assert result["valid"] is False
+    assert _find_code(result, ErrorCode.SYNTAX_UNEXPECTED_TOKEN.value, "errors")
 
 
 # --- SYNTAX_UNTERMINATED_REPEAT ---
@@ -193,7 +193,7 @@ def test_semantic_note_out_of_range_pyxel(compose_mml):
 # --- SEMANTIC_CHANNEL_MISMATCH ---
 def test_semantic_channel_mismatch_ppmck_triangle_duty(compose_mml):
     result = compose_mml(action="validate", mml="T t120 l4 @2\n  c", mode="ppmck")
-    assert _find_code(result, ErrorCode.SEMANTIC_CHANNEL_MISMATCH.value, "warnings")
+    assert _find_code(result, ErrorCode.SEMANTIC_CHANNEL_MISMATCH.value, "errors")
 
 
 def test_semantic_channel_mismatch_ppmck_noise_pitch(compose_mml):
@@ -203,7 +203,7 @@ def test_semantic_channel_mismatch_ppmck_noise_pitch(compose_mml):
 
 def test_semantic_channel_mismatch_pyxel_triangle_at(compose_mml):
     result = compose_mml(action="validate", mml="2: T120 L4 @1\n  C", mode="pyxel")
-    assert _find_code(result, ErrorCode.SEMANTIC_CHANNEL_MISMATCH.value, "warnings")
+    assert _find_code(result, ErrorCode.SEMANTIC_CHANNEL_MISMATCH.value, "errors")
 
 
 # --- SYNTAX_UNTERMINATED_HEADER ---

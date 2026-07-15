@@ -12,8 +12,9 @@
 <digit>       ::= "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9"
 <number>      ::= <digit>+
 
-/* 音符名（Lexer で正規化: ppmck は小文字、pyxel は大文字 → 内部は小文字） */
-<note_name>   ::= "c" | "d" | "e" | "f" | "g" | "a" | "b"
+/* 音符名（case-sensitive。受理後のASTでは小文字へ正規化） */
+<ppmck_note_name> ::= "c" | "d" | "e" | "f" | "g" | "a" | "b"
+<pyxel_note_name> ::= "C" | "D" | "E" | "F" | "G" | "A" | "B"
 
 /* 変化記号 */
 <sharp>       ::= "+" | "#"
@@ -43,6 +44,8 @@
 <whitespace>  ::= " " | "\t" | "\r" | "\n"
 ```
 
+`<whitespace>`は字句間の区切りであり、statementやASTノードではない。`#`はppmckの行頭ヘッダー開始、または両モードで音符名の直後に置くsharpとしてのみ有効である。
+
 ---
 
 ## 2. ppmck モード
@@ -50,7 +53,7 @@
 ### 2.1 全体構造
 
 ```bnf
-<ppmck_mml>       ::= <ppmck_header>* <ppmck_track>*
+<ppmck_mml>       ::= <ppmck_header>* <ppmck_global_definition>* <ppmck_track>*
 
 <ppmck_header>    ::= "#" <header_key> <header_value>?
 <header_key>      ::= "TITLE" | "COMPOSER" | "PROGRAMER" | "OCTAVE-REV"
@@ -58,15 +61,30 @@
                     | "EFFECT-INCLUDE"
 <header_value>    ::= "\"" <string> "\""
 
-<ppmck_track>     ::= <track_header> <ppmck_statement>*
-<track_header>    ::= "A" | "B" | "T" | "N" | "L"
+<ppmck_global_definition>
+                  ::= <vol_envelope_def> | <duty_envelope_def> | <lfo_def>
+                    | <pitch_env_def> | <note_env_def>
+
+<ppmck_track>     ::= <audio_track> | <loop_track>
+<audio_track>     ::= <audio_track_header> <ppmck_statement>*
+<audio_track_header>
+                  ::= "A" | "B" | "T" | "N"
+<loop_track>      ::= "L" <loop_statement>*
+<loop_statement>  ::= <length_cmd> | <ppmck_rest> | <loop_repeat> | <bar>
+<loop_repeat_item>::= <length_cmd> | <ppmck_rest> | <loop_repeat>
+<loop_repeat>     ::= "[" <loop_repeat_item>* ("|" <loop_repeat_item>*)? "]" <number>?
 ```
+
+グローバル定義は全トラック共通である。既存入力との互換性のため、同じ定義を音声トラック内の`<ppmck_ext_cmd>`として置くこともできる。`L`は音声を生成しない制御トラックで、0回または1回だけ記述できる。
 
 ### 2.2 ステートメント
 
 ```bnf
-<ppmck_statement> ::= <note>
-                    | <rest>
+<ppmck_statement> ::= <ppmck_simple_statement> | <ppmck_repeat> | <bar>
+
+<ppmck_simple_statement>
+                  ::= <ppmck_note>
+                    | <ppmck_rest>
                     | <octave_cmd>
                     | <length_cmd>
                     | <volume_cmd>
@@ -76,14 +94,10 @@
                     | <tie_cmd>
                     | <slur_cmd>
                     | <ppmck_ext_cmd>
-                    | <repeat_start>
-                    | <repeat_end>
-                    | <bar>
                     | <comment>
-                    | <newline>
 
-<note>            ::= <note_name> <accidental>? <length>
-<rest>            ::= "r" <length>
+<ppmck_note>      ::= <ppmck_note_name> <accidental>? <length>
+<ppmck_rest>      ::= "r" <length>
 
 <octave_cmd>      ::= "o" <number>          /* o0 〜 o7 */
                     | <octave_up>
@@ -96,11 +110,17 @@
 <quantize_cmd>    ::= "q" <number>          /* q1 〜 q8 */
 <tempo_cmd>       ::= "t" <number>          /* t1 〜 */
 
-<tie_cmd>         ::= "^" (<note> | <number>)
-<slur_cmd>        ::= "&" (<note> | <rest> | <number>)
+<tie_cmd>         ::= "^" (<ppmck_note> | <number>)
+<slur_cmd>        ::= "&" (<ppmck_note> | <ppmck_rest> | <number>)
 
 <comment>         ::= ";" <string_to_eol>
+
+<ppmck_repeat_item>
+                  ::= <ppmck_simple_statement> | <ppmck_repeat>
+<ppmck_repeat>    ::= "[" <ppmck_repeat_item>* ("|" <ppmck_repeat_item>*)? "]" <number>?
 ```
+
+`[本体]N`は本体をN回再生する。`[前半|後半]N`は`前半＋後半`をN−1回、最後に前半だけを再生する。`N=1`では前半だけとなる。`|`は現在のリピート階層で高々1個で、ネストした`|`は内側に所属する。リピート外の`|`は小節線である。回数省略は無限を表し、IRプレビューでは`前半＋後半`を2回展開して`repeat_count=0`を保持する。
 
 ### 2.3 合成拡張コマンド
 
@@ -123,27 +143,27 @@
                     | <note_env_off>
 
 <relative_volume_cmd>
-                  ::= "v+" <number>?        /* 1 〜 15 */
-                    | "v-" <number>?        /* 1 〜 15 */
+                  ::= "v+" <number>?        /* 省略時1、1 〜 15 */
+                    | "v-" <number>?        /* 省略時1、1 〜 15 */
 
 <detune_cmd>      ::= "D" <signed_number>  /* -127 〜 126 */
 <sweep_cmd>       ::= "s" <number> "," <signed_number>
 
-<vol_envelope_def>::= "@v" <number> "=" "{" <number_list> "|" <number_list>? "}"
+<vol_envelope_def>::= "@v" <number> "=" "{" <number_list> ("|" <number_list>?)? "}"
 <vol_envelope_use>::= "@v" <number>
 
-<duty_envelope_def>::= "@" <number> "=" "{" <number_list> "|" <number_list>? "}"
+<duty_envelope_def>::= "@" <number> "=" "{" <number_list> ("|" <number_list>?)? "}"
 <duty_envelope_use>::= "@@" <number>
 
 <lfo_def>        ::= "@MP" <number> "=" "{" <number> "," <number> "," <number> "," <number> "}"
 <lfo_use>        ::= "MP" <number>
 <lfo_off>        ::= "MPOF"
 
-<pitch_env_def>   ::= "@EP" <number> "=" "{" <signed_number_list> "|" <signed_number_list>? "}"
+<pitch_env_def>   ::= "@EP" <number> "=" "{" <signed_number_list> ("|" <signed_number_list>?)? "}"
 <pitch_env_use>   ::= "EP" <number>
 <pitch_env_off>   ::= "EPOF"
 
-<note_env_def>    ::= "@EN" <number> "=" "{" <signed_number_list> "|" <signed_number_list>? "}"
+<note_env_def>    ::= "@EN" <number> "=" "{" <signed_number_list> ("|" <signed_number_list>?)? "}"
 <note_env_use>    ::= "EN" <number>
 <note_env_off>   ::= "ENOF"
 
@@ -158,13 +178,10 @@
 
 ```bnf
 <ppmck_stage2>    ::= <count_length>
-                    | <section_repeat>
                     | <transpose_cmd>
                     | <noise_mode_cmd>
 
-<count_length>    ::= <note_name> <accidental>? "%" <number>
-
-<section_repeat>  ::= "[" <ppmck_statement>+ "]" <number>?
+<count_length>    ::= <ppmck_note_name> <accidental>? "%" <number>
 
 <transpose_cmd>   ::= "K" <number>
 <noise_mode_cmd>  ::= "m" <number>
@@ -182,14 +199,14 @@
 
 <pyxel_track>     ::= <pyxel_track_header> <pyxel_statement>*
 <pyxel_track_header>
-                  ::= <number> ":"        /* 0: 1: 2: 3: */
+                  ::= "0:" | "1:" | "2:" | "3:"
 ```
 
 ### 3.2 ステートメント
 
 ```bnf
-<pyxel_statement> ::= <note>
-                    | <rest>
+<pyxel_statement> ::= <pyxel_note>
+                    | <pyxel_rest>
                     | <octave_cmd>
                     | <length_cmd>
                     | <volume_cmd>
@@ -199,14 +216,12 @@
                     | <transpose_cmd>
                     | <detune_cmd>
                     | <tie_cmd>
-                    | <repeat_start>
-                    | <repeat_end>
+                    | <pyxel_repeat>
                     | <bar>
                     | <ext_cmd>
-                    | <newline>
 
-<note>            ::= <note_name> <accidental>? <length>
-<rest>            ::= "R" <length>
+<pyxel_note>      ::= <pyxel_note_name> <accidental>? <length>
+<pyxel_rest>      ::= "R" <length>
 
 <octave_cmd>      ::= "O" <number>          /* O0 〜 O7 */
                     | <octave_up>
@@ -221,8 +236,11 @@
 <transpose_cmd>   ::= "K" <signed_number>   /* 半音単位 */
 <detune_cmd>      ::= "Y" <signed_number>   /* セント単位 */
 
-<tie_cmd>         ::= <tie> (<note> | <rest> | <number>)
+<tie_cmd>         ::= <tie> (<pyxel_note> | <pyxel_rest> | <number>)
+<pyxel_repeat>    ::= "[" <pyxel_statement>* "]" <number>?
 ```
+
+Pyxelリピートはネストできる。指定回数は1以上で、回数省略は無限を表す。IRプレビューでは本体を2回展開し、`repeat_count=0`を保持する。Pyxelの`|`は常に小節線であり、終端分岐ではない。
 
 ### 3.3 合成拡張コマンド
 
@@ -230,14 +248,16 @@
 <ext_cmd>         ::= <env_cmd> | <vib_cmd> | <gli_cmd>
 
 <env_cmd>         ::= "@ENV" <number> <env_def>?
-<env_def>         ::= <number>+
+<env_def>         ::= <number> <number> (<number> <number>)*
 
 <vib_cmd>         ::= "@VIB" <number> <vib_def>?
-<vib_def>         ::= <number>+
+<vib_def>         ::= <number> <number> <number>
 
 <gli_cmd>         ::= "@GLI" <number> <gli_def>?
-<gli_def>         ::= <number>+
+<gli_def>         ::= <number> <number>
 ```
+
+slot 0は解除専用で、パラメータを指定できない。slot 1以上ではパラメータ付きの初出を定義、パラメータなしを既定義slotの選択として扱う。Pyxel公式の波括弧、カンマ、負数、`*`を使う拡張形式は本受理文法に含めない。
 
 ---
 
@@ -259,6 +279,8 @@
 |---|---|---|---|---|
 | `o` / `O` | 両方 | 0 〜 7 | 4 | |
 | `l` / `L` | 両方 | 1 〜 192 | 4 | |
+| 音符・休符の明示音長 | 両方 | 1 〜 192 | 現在の`l`/`L` | |
+| タイ対象の音長 | 両方 | 1 〜 192 | — | |
 | `v` | ppmck | 0 〜 15 | 15 | |
 | `V` | pyxel | 0 〜 127 | 100 | |
 | `v+` / `v-` | ppmck | 1 〜 15 | 1 | 相対音量（0〜15へクランプ） |
@@ -274,8 +296,14 @@
 | `@MP` / `MP` / `MPOF` | ppmck | 0 〜 255 | — | 三角LFO |
 | `@EP` / `EP` / `EPOF` | ppmck | 0 〜 255 | — | cent単位ピッチエンベロープ |
 | `@EN` / `EN` / `ENOF` | ppmck | 0 〜 255 | — | 絶対半音オフセット列 |
+| ppmck envelope slot | ppmck | 0 〜 255 | — | 全定義・参照共通 |
+| volume envelope要素 | ppmck | 0 〜 15 | — | |
+| duty envelope要素 | ppmck | 0 〜 3 | — | |
+| pitch/note envelope要素 | ppmck | -127 〜 126 | — | |
+| `@MP`要素 | ppmck | delay 0〜255, period 1〜255, depth 0〜255, 第4値0 | — | |
 | `K` | pyxel | -127 〜 127 | 0 | トランスポーズ（半音） |
 | `Y` | pyxel | -127 〜 127 | 0 | ディチューン（セント） |
+| リピート回数 | 両方 | 1以上、または省略（無限） | 省略 | 展開後は各トラック100,000イベント以下 |
 
 ---
 

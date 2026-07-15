@@ -137,9 +137,7 @@ def test_compose_with_syntax_error(compose_mml):
 
 
 def test_compose_with_warning(compose_mml, tmp_output_dir):
-    mml = """2: T120 L4 O3 V60 @1
-  C4
-"""
+    mml = "0: T120 L4 O3 V60 [C4]"
     result = compose_mml(action="compose", mml=mml, mode="pyxel")
     assert result["success"] is True
     assert result["validation"]["warnings"]

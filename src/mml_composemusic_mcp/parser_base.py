@@ -33,6 +33,11 @@ class ParserContext:
     def expect(self, *types: TokenType) -> Token | None:
         return self.match(*types)
 
+    def synchronize(self, *types: TokenType) -> None:
+        """Advance to a recovery token without ever consuming past EOF."""
+        while self.peek().type not in (*types, TokenType.EOF):
+            self.advance()
+
     def add_error(
         self,
         code: ErrorCode,

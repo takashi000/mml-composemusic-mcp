@@ -1,7 +1,5 @@
 """Pyxel semantic analyzer: AST -> NoteSequence IR."""
 
-import copy
-
 from .ast_nodes import (
     DutyStmt,
     ExtCmdStmt,
@@ -27,13 +25,12 @@ from .ir import (
     GlideEvent,
     NoteEvent,
     NoteSequence,
-    RepeatEvent,
     RestEvent,
     TempoEvent,
     VibratoEvent,
     VolumeEvent,
 )
-from .parser_base import clamp, length_value_to_ticks, note_to_midi
+from .parser_base import clamp, note_to_midi
 from .semantic_base import SemanticAnalyzer
 
 PULSE_CHANNELS = {"Pulse1", "Pulse2"}
@@ -43,77 +40,24 @@ PYXEL_DUTY = {
 }
 
 
-class RepeatFrame:
-    """Stack frame for nested repeat expansion."""
-
-    def __init__(self, start_tick: int) -> None:
-        self.start_tick = start_tick
-        self.event_count: int = 0
-
-
 class PyxelSemanticAnalyzer(SemanticAnalyzer):
     def __init__(self, source: str, program: Program) -> None:
         super().__init__(source, program)
         self.note_sequence.mode = "pyxel"
         self.transpose = 0
         self.detune_cents = 0.0
-        self.repeat_stack: list[RepeatFrame] = []
-
-    def analyze(self) -> tuple[NoteSequence, list[ErrorDetail]]:
-        ns, errors = super().analyze()
-        references = (
-            (EnvelopeEvent, "envelopes"),
-            (VibratoEvent, "vibratos"),
-            (GlideEvent, "glides"),
-        )
-        for channel in ns.channels.values():
-            for event in channel.events:
-                for event_type, table_name in references:
-                    if (
-                        isinstance(event, event_type)
-                        and event.slot != 0
-                        and event.slot not in ns.definitions[table_name]
-                    ):
-                        self.ctx.add_error(
-                            ErrorCode.SEMANTIC_UNDEFINED_REFERENCE,
-                            0,
-                            0,
-                            f"未定義の@{table_name}スロット {event.slot} です。",
-                            "error",
-                            "パラメータ付きで定義してから選択してください。",
-                        )
-        return ns, errors
 
     def _reset_state(self, track: Track) -> None:
-        self.octave = 4
-        self.default_length = 4
+        super()._reset_state(track)
         self.velocity = 100
         self.gate_time = 0.8
-        self.duty = 2
         self.transpose = 0
         self.detune_cents = 0.0
-        self.tick_position = 0
-        self.repeat_stack = []
-
-    def _analyze_track(self, track: Track) -> None:
-        self.current_channel = track.channel
-        self._reset_state(track)
-        for stmt in track.statements:
-            self._analyze_statement(stmt)
-        if self.repeat_stack:
-            for _frame in self.repeat_stack:
-                self.ctx.add_error(
-                    code=ErrorCode.SYNTAX_UNTERMINATED_REPEAT,
-                    line=1,
-                    column=1,
-                    message="リピート '[' に対応する ']' が見つかりません。",
-                    severity="error",
-                    hint="] を追加してリピートを閉じてください。回数指定（例: ]2）も可能です。",
-                    context="",
-                )
 
     def _analyze_note(self, stmt: NoteStmt) -> None:
         ticks = self._ticks_for(stmt)
+        if ticks is None:
+            return
         midi = note_to_midi(stmt.note_name, self.octave, stmt.accidental)
         if self.current_channel != "Noise":
             midi += self.transpose
@@ -142,6 +86,8 @@ class PyxelSemanticAnalyzer(SemanticAnalyzer):
 
     def _analyze_rest(self, stmt: RestStmt) -> None:
         ticks = self._ticks_for(stmt)
+        if ticks is None:
+            return
         event = RestEvent(tick_position=self.tick_position, duration=ticks)
         self._add_event(event)
         self.tick_position += ticks
@@ -150,10 +96,14 @@ class PyxelSemanticAnalyzer(SemanticAnalyzer):
         if stmt.direction == "up":
             if self.octave < 7:
                 self.octave += 1
+            else:
+                self._validate_range(stmt, self.octave + 1, 0, 7, "オクターブ")
             return
         if stmt.direction == "down":
             if self.octave > 0:
                 self.octave -= 1
+            else:
+                self._validate_range(stmt, self.octave - 1, 0, 7, "オクターブ")
             return
         if stmt.value is None:
             return
@@ -222,6 +172,8 @@ class PyxelSemanticAnalyzer(SemanticAnalyzer):
         self.gate_time = stmt.value / 100.0
 
     def _analyze_duty(self, stmt: DutyStmt) -> None:
+        if not self._validate_range(stmt, stmt.value, 0, 3, "音色"):
+            return
         if stmt.value in PYXEL_DUTY:
             if self.current_channel not in PULSE_CHANNELS:
                 self.ctx.add_error(
@@ -229,7 +181,7 @@ class PyxelSemanticAnalyzer(SemanticAnalyzer):
                     line=stmt.line,
                     column=stmt.column,
                     message=f"チャンネル '{self.current_channel}' で '@{stmt.value}' は使用できません。",
-                    severity="warning",
+                    severity="error",
                     hint="トラック番号がチャンネルを決定します。@ コマンドを削除するか、Pulseチャンネル（0: または 1:）に移動してください。",
                     context=self._context_line(stmt),
                 )
@@ -239,34 +191,28 @@ class PyxelSemanticAnalyzer(SemanticAnalyzer):
                 DutyEvent(tick_position=self.tick_position, value=self.duty)
             )
             return
+        if stmt.value == 0 and self.current_channel == "Triangle":
+            return
+        if stmt.value == 3 and self.current_channel == "Noise":
+            return
         if stmt.value == 0:
             self.ctx.add_error(
                 code=ErrorCode.SEMANTIC_CHANNEL_MISMATCH,
                 line=stmt.line,
                 column=stmt.column,
                 message=f"チャンネル '{self.current_channel}' で '@0' (Triangle) は使用できません。",
-                severity="warning",
-                hint="トラック番号がチャンネルを決定します。@ コマンドを削除するか、適切なチャンネルに移動してください。",
-                context=self._context_line(stmt),
-            )
-        elif stmt.value == 3:
-            self.ctx.add_error(
-                code=ErrorCode.SEMANTIC_CHANNEL_MISMATCH,
-                line=stmt.line,
-                column=stmt.column,
-                message=f"チャンネル '{self.current_channel}' で '@3' (Noise) は使用できません。",
-                severity="warning",
+                severity="error",
                 hint="トラック番号がチャンネルを決定します。@ コマンドを削除するか、適切なチャンネルに移動してください。",
                 context=self._context_line(stmt),
             )
         else:
             self.ctx.add_error(
-                code=ErrorCode.SYNTAX_INVALID_NUMBER,
+                code=ErrorCode.SEMANTIC_CHANNEL_MISMATCH,
                 line=stmt.line,
                 column=stmt.column,
-                message=f"'@' の後に無効な値 '{stmt.value}' が見つかりました。",
+                message=f"チャンネル '{self.current_channel}' で '@3' (Noise) は使用できません。",
                 severity="error",
-                hint="例: @1 のように指定してください。",
+                hint="トラック番号がチャンネルを決定します。@ コマンドを削除するか、適切なチャンネルに移動してください。",
                 context=self._context_line(stmt),
             )
 
@@ -287,95 +233,58 @@ class PyxelSemanticAnalyzer(SemanticAnalyzer):
         self._add_event(TempoEvent(tick_position=self.tick_position, bpm=stmt.value))
 
     def _analyze_transpose(self, stmt: TransposeStmt) -> None:
+        if not self._validate_range(stmt, stmt.value, -127, 127, "トランスポーズ"):
+            return
         self.transpose = stmt.value
 
     def _analyze_detune(self, stmt) -> None:  # type: ignore[no-untyped-def]
+        if not self._validate_range(stmt, stmt.value, -127, 127, "ディチューン"):
+            return
         self.detune_cents = float(stmt.value)
 
     def _analyze_tie(self, stmt: TieStmt) -> None:
         if stmt.target is None:
             return
         if isinstance(stmt.target, int):
-            ticks = length_value_to_ticks(stmt.target, 0)
+            ticks = self._ticks_for_value(stmt.target, stmt)
+            if ticks is None:
+                return
             self._extend_last_note(ticks)
             self.tick_position += ticks
             return
         if isinstance(stmt.target, NoteStmt):
             target_ticks = self._ticks_for(stmt.target)
+            if target_ticks is None:
+                return
             self._extend_last_note(target_ticks)
             self.tick_position += target_ticks
             return
         if isinstance(stmt.target, RestStmt):
             target_ticks = self._ticks_for(stmt.target)
+            if target_ticks is None:
+                return
             self._extend_last_note(target_ticks)
             self.tick_position += target_ticks
             return
 
     def _analyze_repeat_start(self, stmt: RepeatStartStmt) -> None:
-        ch = self.note_sequence.channels[self.current_channel]  # type: ignore[index]
-        frame = RepeatFrame(start_tick=self.tick_position)
-        frame.event_count = len(ch.events)
-        self.repeat_stack.append(frame)
+        super()._analyze_repeat_start(stmt)
 
     def _analyze_repeat_end(self, stmt: RepeatEndStmt) -> None:
-        if not self.repeat_stack:
-            self.ctx.add_error(
-                code=ErrorCode.SYNTAX_UNMATCHED_REPEAT_END,
-                line=stmt.line,
-                column=stmt.column,
-                message="']' に対応する '[' が見つかりません。",
-                severity="error",
-                hint="直前の [ を確認するか、余分な ] を削除してください。",
-                context=self._context_line(stmt),
-            )
-            return
-        frame = self.repeat_stack.pop()
-        start_tick = frame.start_tick
-        ch = self.note_sequence.channels[self.current_channel]  # type: ignore[index]
-
-        count = stmt.count
-        if count is None:
-            count = 0  # infinite
-            self.ctx.add_error(
-                code=ErrorCode.SEMANTIC_UNSUPPORTED_FEATURE,
-                line=stmt.line,
-                column=stmt.column,
-                message="無限リピートはWAV生成時に2回で打ち切られます。",
-                severity="warning",
-                hint="回数を指定するか、2回の再生で十分であることを確認してください。",
-                context=self._context_line(stmt),
-            )
-
-        segment_events = ch.events[frame.event_count :]
-        segment_length = self.tick_position - start_tick
-
-        repeat_count = 2 if count == 0 else count
-        for i in range(1, repeat_count):
-            offset = i * segment_length
-            for ev in segment_events:
-                new_event = self._clone_event(ev, ev.tick_position + offset)
-                self._add_event(new_event)
-                if isinstance(new_event, (NoteEvent, RestEvent)):
-                    end = new_event.tick_position + new_event.duration
-                    if end > self.tick_position:
-                        self.tick_position = end
-
-        ch.events.sort(key=lambda e: e.tick_position)
-        self._add_event(
-            RepeatEvent(
-                start_tick=start_tick,
-                end_tick=self.tick_position,
-                repeat_count=count,
-            )
-        )
-
-    def _clone_event(self, event, tick_position: int):  # type: ignore[no-untyped-def]
-        new = copy.copy(event)
-        new.tick_position = tick_position
-        return new
+        super()._analyze_repeat_end(stmt)
 
     def _analyze_ext_cmd(self, stmt: ExtCmdStmt) -> None:
         if stmt.slot == 0:
+            if stmt.params:
+                self.ctx.add_error(
+                    ErrorCode.SEMANTIC_VALUE_OUT_OF_RANGE,
+                    stmt.line,
+                    stmt.column,
+                    f"@{stmt.cmd}0 は解除専用で、パラメータを指定できません。",
+                    "error",
+                    context=self._context_line(stmt),
+                )
+                return
             if stmt.cmd == "ENV":
                 ev = EnvelopeEvent(tick_position=self.tick_position, slot=0)
             elif stmt.cmd == "VIB":
@@ -402,7 +311,7 @@ class PyxelSemanticAnalyzer(SemanticAnalyzer):
                 )
                 return
             if stmt.cmd == "ENV":
-                if len(stmt.params) % 2:
+                if len(stmt.params) < 2 or len(stmt.params) % 2:
                     self.ctx.add_error(
                         ErrorCode.SEMANTIC_VALUE_OUT_OF_RANGE,
                         stmt.line,
@@ -430,14 +339,21 @@ class PyxelSemanticAnalyzer(SemanticAnalyzer):
                     "points": points
                 }
             elif stmt.cmd == "VIB":
-                if len(stmt.params) >= 3:
-                    params = {
-                        "delay_ticks": stmt.params[0],
-                        "period_ticks": stmt.params[1],
-                        "depth_cents": stmt.params[2],
-                    }
-                else:
-                    params = {}
+                if len(stmt.params) != 3:
+                    self.ctx.add_error(
+                        ErrorCode.SEMANTIC_VALUE_OUT_OF_RANGE,
+                        stmt.line,
+                        stmt.column,
+                        "@VIBのパラメータは3値で指定してください。",
+                        "error",
+                        context=self._context_line(stmt),
+                    )
+                    return
+                params = {
+                    "delay_ticks": stmt.params[0],
+                    "period_ticks": stmt.params[1],
+                    "depth_cents": stmt.params[2],
+                }
                 ev = VibratoEvent(
                     tick_position=self.tick_position,
                     slot=stmt.slot,
@@ -445,13 +361,20 @@ class PyxelSemanticAnalyzer(SemanticAnalyzer):
                 )
                 self.note_sequence.definitions["vibratos"][stmt.slot] = params
             else:
-                if len(stmt.params) >= 2:
-                    params = {
-                        "initial_offset_cents": stmt.params[0],
-                        "duration_ticks": stmt.params[1],
-                    }
-                else:
-                    params = {}
+                if len(stmt.params) != 2:
+                    self.ctx.add_error(
+                        ErrorCode.SEMANTIC_VALUE_OUT_OF_RANGE,
+                        stmt.line,
+                        stmt.column,
+                        "@GLIのパラメータは2値で指定してください。",
+                        "error",
+                        context=self._context_line(stmt),
+                    )
+                    return
+                params = {
+                    "initial_offset_cents": stmt.params[0],
+                    "duration_ticks": stmt.params[1],
+                }
                 ev = GlideEvent(
                     tick_position=self.tick_position,
                     slot=stmt.slot,
@@ -460,6 +383,22 @@ class PyxelSemanticAnalyzer(SemanticAnalyzer):
                 self.note_sequence.definitions["glides"][stmt.slot] = params
             self._add_event(ev)
         else:
+            table_name = {
+                "ENV": "envelopes",
+                "VIB": "vibratos",
+                "GLI": "glides",
+            }[stmt.cmd]
+            if stmt.slot not in self.note_sequence.definitions[table_name]:
+                self.ctx.add_error(
+                    ErrorCode.SEMANTIC_UNDEFINED_REFERENCE,
+                    stmt.line,
+                    stmt.column,
+                    f"未定義の@{stmt.cmd}スロット {stmt.slot} が参照されました。",
+                    "error",
+                    "先に同じスロットをパラメータ付きで定義してください。",
+                    self._context_line(stmt),
+                )
+                return
             if stmt.cmd == "ENV":
                 ev = EnvelopeEvent(tick_position=self.tick_position, slot=stmt.slot)
             elif stmt.cmd == "VIB":

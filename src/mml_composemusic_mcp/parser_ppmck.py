@@ -23,6 +23,7 @@ from .ast_nodes import (
     Program,
     QuantizeStmt,
     RelativeVolumeStmt,
+    RepeatBreakStmt,
     RepeatEndStmt,
     RepeatStartStmt,
     RestStmt,
@@ -65,6 +66,9 @@ class PpmckParser:
         self.ctx = ParserContext(tokens)
         self.tracks_seen: set[str] = set()
         self.track_ids_seen: set[str] = set()
+        self.repeat_stack: list[Token] = []
+        self.repeat_break_seen: list[bool] = []
+        self.seen_global_definition = False
 
     def parse(self) -> tuple[Program, list[ErrorDetail]]:
         program = Program(line=1, column=1, tracks=[])
@@ -73,7 +77,7 @@ class PpmckParser:
         while self.ctx.peek().type != TokenType.EOF:
             token = self.ctx.peek()
             if token.type == TokenType.HEADER:
-                if program.tracks:
+                if program.tracks or self.seen_global_definition:
                     self.ctx.add_error(
                         code=ErrorCode.SYNTAX_UNEXPECTED_TOKEN,
                         line=token.line,
@@ -116,9 +120,10 @@ class PpmckParser:
                     ),
                 ):
                     program.global_statements.append(statement)
+                    self.seen_global_definition = True
                 else:
                     self.ctx.add_error(
-                        code=ErrorCode.SEMANTIC_OUTSIDE_TRACK,
+                        code=ErrorCode.SYNTAX_UNEXPECTED_TOKEN,
                         line=token.line,
                         column=token.column,
                         message="トラック外ではエフェクト定義だけを使用できます。",
@@ -128,7 +133,7 @@ class PpmckParser:
                     )
                 continue
             # Anything else before a track header is outside a track.
-            self._warn_outside_track(token)
+            self._error_outside_track(token)
             self.ctx.advance()
 
         # Attach headers to the first track if no track exists yet
@@ -195,7 +200,7 @@ class PpmckParser:
 
     def _parse_track(self) -> Track | None:
         token = self.ctx.advance()
-        ch = token.value.upper()
+        ch = token.value
         if ch in self.track_ids_seen:
             self.ctx.add_error(
                 code=ErrorCode.SYNTAX_DUPLICATE_TRACK,
@@ -207,16 +212,7 @@ class PpmckParser:
                 context=context_line(self.source, token),
             )
         self.track_ids_seen.add(ch)
-        if ch == "L":
-            return Track(
-                line=token.line,
-                column=token.column,
-                track_id="L",
-                channel="Loop",
-                mode="ppmck",
-                statements=[],
-            )
-        if ch not in CHANNEL_MAP:
+        if ch not in (*CHANNEL_MAP, "L"):
             self.ctx.add_error(
                 code=ErrorCode.SYNTAX_INVALID_TRACK_HEADER,
                 line=token.line,
@@ -227,7 +223,7 @@ class PpmckParser:
                 context=context_line(self.source, token),
             )
             return None
-        channel = CHANNEL_MAP[ch]
+        channel = "Loop" if ch == "L" else CHANNEL_MAP[ch]
         self.tracks_seen.add(channel)
         track = Track(
             line=token.line,
@@ -237,13 +233,48 @@ class PpmckParser:
             mode="ppmck",
             statements=[],
         )
+        self.repeat_stack = []
+        self.repeat_break_seen = []
         while self.ctx.peek().type not in (
             TokenType.TRACK_HEADER,
             TokenType.EOF,
         ):
             stmt = self._parse_statement()
             if stmt is not None:
-                track.statements.append(stmt)
+                if channel == "Loop" and not isinstance(
+                    stmt,
+                    (
+                        LengthStmt,
+                        RestStmt,
+                        RepeatStartStmt,
+                        RepeatBreakStmt,
+                        RepeatEndStmt,
+                        BarStmt,
+                    ),
+                ):
+                    self.ctx.add_error(
+                        code=ErrorCode.SYNTAX_UNEXPECTED_TOKEN,
+                        line=stmt.line,
+                        column=stmt.column,
+                        message="Lトラックでは時間指定以外のコマンドを使用できません。",
+                        severity="error",
+                        hint="l、休符、リピート、小節線だけを使用してください。",
+                        context=context_line(self.source, stmt),
+                    )
+                else:
+                    track.statements.append(stmt)
+        for start in self.repeat_stack:
+            self.ctx.add_error(
+                code=ErrorCode.SYNTAX_UNTERMINATED_REPEAT,
+                line=start.line,
+                column=start.column,
+                message="リピート '[' に対応する ']' が見つかりません。",
+                severity="error",
+                hint="] を追加してリピートを閉じてください。",
+                context=context_line(self.source, start),
+            )
+        self.repeat_stack = []
+        self.repeat_break_seen = []
         return track
 
     def _parse_statement(self) -> ASTNode | None:
@@ -284,6 +315,19 @@ class PpmckParser:
             return self._parse_repeat_end()
         if token.type == TokenType.BAR:
             self.ctx.advance()
+            if self.repeat_stack:
+                if self.repeat_break_seen[-1]:
+                    self.ctx.add_error(
+                        code=ErrorCode.SYNTAX_UNEXPECTED_TOKEN,
+                        line=token.line,
+                        column=token.column,
+                        message="1つのリピート内に終端分岐 '|' は1つだけ指定できます。",
+                        severity="error",
+                        hint="余分な '|' を削除してください。",
+                        context=context_line(self.source, token),
+                    )
+                self.repeat_break_seen[-1] = True
+                return RepeatBreakStmt(line=token.line, column=token.column)
             return BarStmt(line=token.line, column=token.column)
         if token.type == TokenType.DETUNE:
             return self._parse_detune()
@@ -448,7 +492,7 @@ class PpmckParser:
         )
 
     def _require_value(self, token: Token, command: str) -> None:
-        if not token.value:
+        if token.value in ("", "+", "-"):
             self.ctx.add_missing_number_error(
                 token, command, context_line(self.source, token)
             )
@@ -503,15 +547,38 @@ class PpmckParser:
                 column=token.column,
                 target=self._parse_note(),
             )
-        # ^ without target extends previous note duration
+        self.ctx.add_error(
+            code=ErrorCode.SYNTAX_UNTERMINATED_TIE,
+            line=token.line,
+            column=token.column,
+            message="タイ '^' の後に音符または音長が必要です。",
+            severity="error",
+            hint="^16 または ^c4 のように対象を続けてください。",
+            context=context_line(self.source, token),
+        )
         return TieCmdStmt(line=token.line, column=token.column, target=None)
 
     def _parse_repeat_start(self) -> RepeatStartStmt:
         token = self.ctx.advance()
+        self.repeat_stack.append(token)
+        self.repeat_break_seen.append(False)
         return RepeatStartStmt(line=token.line, column=token.column)
 
     def _parse_repeat_end(self) -> RepeatEndStmt:
         token = self.ctx.advance()
+        if not self.repeat_stack:
+            self.ctx.add_error(
+                code=ErrorCode.SYNTAX_UNMATCHED_REPEAT_END,
+                line=token.line,
+                column=token.column,
+                message="']' に対応する '[' が見つかりません。",
+                severity="error",
+                hint="余分な ']' を削除してください。",
+                context=context_line(self.source, token),
+            )
+        else:
+            self.repeat_stack.pop()
+            self.repeat_break_seen.pop()
         count: int | None = None
         if token.value:
             count = int(token.value)
@@ -524,7 +591,7 @@ class PpmckParser:
     def _parse_detune(self) -> DetuneCmdStmt:
         token = self.ctx.advance()
         self._require_value(token, "D")
-        value = int(token.value) if token.value else 0
+        value = int(token.value) if token.value not in ("", "+", "-") else 0
         return DetuneCmdStmt(
             line=token.line,
             column=token.column,
@@ -534,8 +601,15 @@ class PpmckParser:
     def _parse_sweep(self) -> SweepStmt:
         token = self.ctx.advance()
         parts = token.value.split(",")
-        speed = int(parts[0]) if len(parts) > 0 and parts[0] else 0
-        depth = int(parts[1]) if len(parts) > 1 and parts[1] else 0
+        valid_parts = (
+            len(parts) == 2 and parts[0].isdigit() and parts[1].lstrip("+-").isdigit()
+        )
+        if "," not in token.raw or not valid_parts:
+            self.ctx.add_missing_number_error(
+                token, "s<speed>,<depth>", context_line(self.source, token)
+            )
+        speed = int(parts[0]) if valid_parts else 0
+        depth = int(parts[1]) if valid_parts else 0
         return SweepStmt(
             line=token.line,
             column=token.column,
@@ -601,24 +675,22 @@ class PpmckParser:
         token = self.ctx.advance()
         self._require_value(token, "@MP")
         slot = int(token.value) if token.value else 0
-        self.ctx.match(TokenType.EQUAL)
-        self.ctx.match(TokenType.BRACE_OPEN)
-        p1 = int(self.ctx.advance().value)
-        self.ctx.match(TokenType.COMMA)
-        p2 = int(self.ctx.advance().value)
-        self.ctx.match(TokenType.COMMA)
-        p3 = int(self.ctx.advance().value)
-        self.ctx.match(TokenType.COMMA)
-        p4 = int(self.ctx.advance().value)
-        self.ctx.match(TokenType.BRACE_CLOSE)
+        self._expect_token(TokenType.EQUAL, "'='")
+        self._expect_token(TokenType.BRACE_OPEN, "'{'")
+        values: list[int] = []
+        for index in range(4):
+            values.append(self._expect_number("@MPのパラメータ"))
+            if index < 3:
+                self._expect_token(TokenType.COMMA, "','")
+        self._expect_token(TokenType.BRACE_CLOSE, "'}'")
         return LfoDefStmt(
             line=token.line,
             column=token.column,
             slot=slot,
-            delay=p1,
-            speed=p2,
-            depth=p3,
-            transition=p4,
+            delay=values[0],
+            speed=values[1],
+            depth=values[2],
+            transition=values[3],
         )
 
     def _parse_lfo_use(self) -> LfoUseStmt:
@@ -640,7 +712,7 @@ class PpmckParser:
         slot = int(token.value) if token.value else 0
         if self.ctx.peek().type == TokenType.EQUAL:
             self.ctx.advance()
-            points, loop_points = self._parse_envelope_body()
+            points, loop_points = self._parse_envelope_body(signed=True)
             return PitchEnvDefStmt(
                 line=token.line,
                 column=token.column,
@@ -673,7 +745,7 @@ class PpmckParser:
         slot = int(token.value) if token.value else 0
         if self.ctx.peek().type == TokenType.EQUAL:
             self.ctx.advance()
-            points, loop_points = self._parse_envelope_body()
+            points, loop_points = self._parse_envelope_body(signed=True)
             return NoteEnvDefStmt(
                 line=token.line,
                 column=token.column,
@@ -700,16 +772,34 @@ class PpmckParser:
         token = self.ctx.advance()
         return NoteEnvOffStmt(line=token.line, column=token.column)
 
-    def _parse_envelope_body(self) -> tuple[list[int], list[int]]:
-        """Parse { num_list | num_list? } for envelope definitions."""
-        self.ctx.match(TokenType.BRACE_OPEN)
+    def _parse_envelope_body(
+        self, *, signed: bool = False
+    ) -> tuple[list[int], list[int]]:
+        """Parse a non-empty envelope body with an optional loop divider."""
+        if self._expect_token(TokenType.BRACE_OPEN, "'{'") is None:
+            self.ctx.synchronize(TokenType.BRACE_CLOSE, TokenType.TRACK_HEADER)
+            self.ctx.match(TokenType.BRACE_CLOSE)
+            return [], []
         points: list[int] = []
         loop_points: list[int] = []
         in_loop = False
-        while self.ctx.peek().type != TokenType.BRACE_CLOSE:
+        while self.ctx.peek().type not in (
+            TokenType.BRACE_CLOSE,
+            TokenType.TRACK_HEADER,
+            TokenType.EOF,
+        ):
             token = self.ctx.peek()
             if token.type == TokenType.BAR:
                 self.ctx.advance()
+                if in_loop:
+                    self.ctx.add_error(
+                        code=ErrorCode.SYNTAX_UNEXPECTED_TOKEN,
+                        line=token.line,
+                        column=token.column,
+                        message="エンベロープのループ区切り '|' は1つだけ指定できます。",
+                        severity="error",
+                        context=context_line(self.source, token),
+                    )
                 in_loop = True
                 continue
             if token.type == TokenType.COMMA:
@@ -723,6 +813,18 @@ class PpmckParser:
                 else:
                     points.append(val)
                 continue
+            if signed and token.type in (TokenType.SHARP, TokenType.FLAT):
+                sign = token.raw
+                self.ctx.advance()
+                number = self.ctx.match(TokenType.NUMBER)
+                if sign not in ("+", "-") or number is None:
+                    self.ctx.add_missing_number_error(
+                        token, "符号付き値", context_line(self.source, token)
+                    )
+                    continue
+                val = int(number.value) * (-1 if sign == "-" else 1)
+                (loop_points if in_loop else points).append(val)
+                continue
             # Unexpected token inside envelope body
             self.ctx.add_error(
                 code=ErrorCode.SYNTAX_UNEXPECTED_TOKEN,
@@ -734,22 +836,60 @@ class PpmckParser:
                 context=context_line(self.source, token),
             )
             self.ctx.advance()
-        self.ctx.match(TokenType.BRACE_CLOSE)
+        if not points:
+            token = self.ctx.peek()
+            self.ctx.add_error(
+                code=ErrorCode.SYNTAX_UNEXPECTED_TOKEN,
+                line=token.line,
+                column=token.column,
+                message="エンベロープ定義には1つ以上の値が必要です。",
+                severity="error",
+                context=context_line(self.source, token),
+            )
+        self._expect_token(TokenType.BRACE_CLOSE, "'}'")
         return points, loop_points
+
+    def _expect_token(self, token_type: TokenType, label: str) -> Token | None:
+        token = self.ctx.match(token_type)
+        if token is not None:
+            return token
+        actual = self.ctx.peek()
+        self.ctx.add_error(
+            code=ErrorCode.SYNTAX_UNEXPECTED_TOKEN,
+            line=actual.line,
+            column=actual.column,
+            message=f"{label} が必要ですが '{actual.raw}' が見つかりました。",
+            severity="error",
+            hint=f"{label} を正しい位置に追加してください。",
+            context=context_line(self.source, actual),
+        )
+        return None
+
+    def _expect_number(self, label: str) -> int:
+        token = self.ctx.match(TokenType.NUMBER)
+        if token is not None:
+            return int(token.value)
+        actual = self.ctx.peek()
+        self.ctx.add_missing_number_error(
+            actual, label, context_line(self.source, actual)
+        )
+        if actual.type not in (TokenType.EOF, TokenType.TRACK_HEADER):
+            self.ctx.advance()
+        return 0
 
     def _handle_invalid(self, token: Token) -> None:
         self.ctx.add_invalid_token_error(token, context_line(self.source, token))
         self.ctx.advance()
 
-    def _warn_outside_track(self, token: Token) -> None:
+    def _error_outside_track(self, token: Token) -> None:
         if token.type in (TokenType.EOF, TokenType.COMMENT):
             return
         self.ctx.add_error(
-            code=ErrorCode.SEMANTIC_OUTSIDE_TRACK,
+            code=ErrorCode.SYNTAX_UNEXPECTED_TOKEN,
             line=token.line,
             column=token.column,
             message=f"'{token.raw}' はトラック外に書かれています。",
-            severity="warning",
+            severity="error",
             hint="コマンドはトラックヘッダー（A, B, T, N）の後に記述してください。",
             context=context_line(self.source, token),
         )

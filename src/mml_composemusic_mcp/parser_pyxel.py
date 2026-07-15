@@ -37,6 +37,7 @@ class PyxelParser:
         self.source = source
         self.ctx = ParserContext(tokens)
         self.tracks_seen: set[str] = set()
+        self.repeat_stack: list[Token] = []
 
     def parse(self) -> tuple[Program, list[ErrorDetail]]:
         program = Program(line=1, column=1, tracks=[])
@@ -51,7 +52,7 @@ class PyxelParser:
             if token.type == TokenType.INVALID:
                 self._handle_invalid(token)
                 continue
-            self._warn_outside_track(token)
+            self._error_outside_track(token)
             self.ctx.advance()
 
         return program, self.ctx.errors
@@ -90,6 +91,7 @@ class PyxelParser:
             mode="pyxel",
             statements=[],
         )
+        self.repeat_stack = []
         while self.ctx.peek().type not in (
             TokenType.TRACK_HEADER,
             TokenType.EOF,
@@ -97,6 +99,17 @@ class PyxelParser:
             stmt = self._parse_statement()
             if stmt is not None:
                 track.statements.append(stmt)
+        for start in self.repeat_stack:
+            self.ctx.add_error(
+                code=ErrorCode.SYNTAX_UNTERMINATED_REPEAT,
+                line=start.line,
+                column=start.column,
+                message="リピート '[' に対応する ']' が見つかりません。",
+                severity="error",
+                hint="] を追加してリピートを閉じてください。",
+                context=context_line(self.source, start),
+            )
+        self.repeat_stack = []
         return track
 
     def _parse_statement(self) -> ASTNode | None:
@@ -331,10 +344,23 @@ class PyxelParser:
 
     def _parse_repeat_start(self) -> RepeatStartStmt:
         token = self.ctx.advance()
+        self.repeat_stack.append(token)
         return RepeatStartStmt(line=token.line, column=token.column)
 
     def _parse_repeat_end(self) -> RepeatEndStmt:
         token = self.ctx.advance()
+        if not self.repeat_stack:
+            self.ctx.add_error(
+                code=ErrorCode.SYNTAX_UNMATCHED_REPEAT_END,
+                line=token.line,
+                column=token.column,
+                message="']' に対応する '[' が見つかりません。",
+                severity="error",
+                hint="余分な ']' を削除してください。",
+                context=context_line(self.source, token),
+            )
+        else:
+            self.repeat_stack.pop()
         count: int | None = None
         if token.value:
             count = int(token.value)
@@ -351,6 +377,10 @@ class PyxelParser:
         slot = 0
         if slot_token is not None:
             slot = int(slot_token.value)
+        else:
+            self.ctx.add_missing_number_error(
+                token, f"@{cmd}", context_line(self.source, token)
+            )
         params: list[int] = []
         while True:
             num = self.ctx.match(TokenType.NUMBER)
@@ -369,15 +399,15 @@ class PyxelParser:
         self.ctx.add_invalid_token_error(token, context_line(self.source, token))
         self.ctx.advance()
 
-    def _warn_outside_track(self, token: Token) -> None:
+    def _error_outside_track(self, token: Token) -> None:
         if token.type == TokenType.EOF:
             return
         self.ctx.add_error(
-            code=ErrorCode.SEMANTIC_OUTSIDE_TRACK,
+            code=ErrorCode.SYNTAX_UNEXPECTED_TOKEN,
             line=token.line,
             column=token.column,
             message=f"'{token.raw}' はトラック外に書かれています。",
-            severity="warning",
+            severity="error",
             hint="コマンドはトラックヘッダー（0:, 1:, 2:, 3:）の後に記述してください。",
             context=context_line(self.source, token),
         )

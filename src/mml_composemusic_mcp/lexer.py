@@ -208,10 +208,6 @@ class Lexer:
             self._advance()
             self._emit(TokenType.SHARP, "+", "+")
             return
-        if ch == "#":
-            self._advance()
-            self._emit(TokenType.SHARP, "#", "#")
-            return
         if ch == "-":
             self._advance()
             self._emit(TokenType.FLAT, "-", "-")
@@ -295,9 +291,8 @@ class Lexer:
                 return
 
             cmd = self._advance()
-            lower = cmd.lower()
-            if lower in "olvt":
-                if lower == "v" and self._peek() in "+-":
+            if cmd in "olvt":
+                if cmd == "v" and self._peek() in "+-":
                     sign = self._advance()
                     num = self._read_number()
                     raw = cmd + sign + num
@@ -308,16 +303,16 @@ class Lexer:
                     return
                 num = self._read_number()
                 raw = cmd + num
-                if lower == "o":
+                if cmd == "o":
                     self._emit(TokenType.OCTAVE, num, raw)
-                elif lower == "l":
+                elif cmd == "l":
                     self._emit(TokenType.LENGTH, num, raw)
-                elif lower == "v":
+                elif cmd == "v":
                     self._emit(TokenType.VOLUME, num, raw)
-                elif lower == "t":
+                elif cmd == "t":
                     self._emit(TokenType.TEMPO, num, raw)
                 return
-            if lower == "q":
+            if cmd == "q":
                 num = self._read_number()
                 self._emit(TokenType.QUANTIZE, num, "q" + num)
                 return
@@ -325,20 +320,20 @@ class Lexer:
                 num = self._read_signed_number()
                 self._emit(TokenType.DETUNE, num, "D" + num)
                 return
-            if lower == "s":
+            if cmd == "s":
+                raw_start = self.pos - 1
                 num0 = self._read_number()
                 if self._peek() == ",":
                     self._advance()
                 num1 = self._read_signed_number()
-                raw = f"s{num0},{num1}"
+                raw = self.source[raw_start : self.pos]
                 self._emit(TokenType.SWEEP, f"{num0},{num1}", raw)
                 return
-            note = lower
-            if note in "cdefgabr":
-                if note == "r":
-                    self._emit(TokenType.REST, note, note)
+            if cmd in "cdefgabr":
+                if cmd == "r":
+                    self._emit(TokenType.REST, cmd, cmd)
                 else:
-                    self._emit(TokenType.NOTE, note, note)
+                    self._emit(TokenType.NOTE, cmd, cmd)
                 return
             # Unknown command: emit as invalid token for parser to report
             self._emit(TokenType.INVALID, cmd, cmd)
@@ -402,8 +397,8 @@ class Lexer:
             return
         if ch == "@":
             self._advance()
-            if self.source[self.pos : self.pos + 3].upper() in ("ENV", "VIB", "GLI"):
-                ext = self.source[self.pos : self.pos + 3].upper()
+            if self.source[self.pos : self.pos + 3] in ("ENV", "VIB", "GLI"):
+                ext = self.source[self.pos : self.pos + 3]
                 self.pos += 3
                 self.column += 3
                 raw = "@" + ext
@@ -432,12 +427,11 @@ class Lexer:
                 elif cmd == "Y":
                     self._emit(TokenType.DETUNE, num, raw)
                 return
-            note = cmd.upper()
-            if note in "CDEFGABR":
-                if note == "R":
-                    self._emit(TokenType.REST, note, note)
+            if cmd in "CDEFGABR":
+                if cmd == "R":
+                    self._emit(TokenType.REST, cmd, cmd)
                 else:
-                    self._emit(TokenType.NOTE, note, note)
+                    self._emit(TokenType.NOTE, cmd, cmd)
                 return
             self._emit(TokenType.INVALID, cmd, cmd)
             return
