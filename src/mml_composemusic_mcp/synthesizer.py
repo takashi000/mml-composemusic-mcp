@@ -115,6 +115,18 @@ def noise_period_to_rate(
     return CPU_CLOCK / NOISE_PERIODS[period & 0x0F]
 
 
+def _noise_period_index(note_number: int) -> int:
+    """Map the semantic note representation to the 2A03 noise period index."""
+    return 8 if note_number == 0 else max(0, min(15, 15 - note_number // 8))
+
+
+def _clock_noise_lfsr(lfsr: int, short_mode: bool) -> int:
+    """Advance the 15-bit 2A03 noise shift register by one timer clock."""
+    tap = 6 if short_mode else 1
+    feedback = (lfsr & 1) ^ ((lfsr >> tap) & 1)
+    return (lfsr >> 1) | (feedback << 14)
+
+
 def apu_mix(
     pulse1: np.ndarray, pulse2: np.ndarray, triangle: np.ndarray, noise: np.ndarray
 ) -> np.ndarray:
@@ -469,18 +481,14 @@ class ChannelSynthesizer:
             self.wave[indices[gate_index:]] = self.wave[indices[gate_index - 1]]
 
     def _render_noise(self, indices, volumes, note):
-        period_index = (
-            8 if note.note_number == 0 else max(0, min(15, 15 - note.note_number // 8))
-        )
+        period_index = _noise_period_index(note.note_number)
         cycles_per_sample = CPU_CLOCK / (NOISE_PERIODS[period_index] * self.sample_rate)
         accumulator = self._noise_accumulator
         lfsr = self._noise_lfsr
         for j, output_index in enumerate(indices):
             accumulator += cycles_per_sample
             for _ in range(int(accumulator)):
-                tap = 6 if self.noise_mode else 1
-                feedback = (lfsr & 1) ^ ((lfsr >> tap) & 1)
-                lfsr = (lfsr >> 1) | (feedback << 14)
+                lfsr = _clock_noise_lfsr(lfsr, bool(self.noise_mode))
             accumulator %= 1.0
             self.wave[output_index] = 0 if lfsr & 1 else max(0, min(15, volumes[j]))
         self._noise_accumulator = accumulator
